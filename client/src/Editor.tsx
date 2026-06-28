@@ -1,8 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Quiz } from "./net";
 import { newQuestion } from "./quizzes";
+import { fileToImageDataURL } from "./imageutil";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
+
+function PhotoField({ image, onPick, onClear }: { image?: string; onPick: (f: File) => void; onClear: () => void }) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  return (
+    <div className="photofield">
+      <input ref={ref} type="file" accept="image/*" style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.currentTarget.value = ""; }} />
+      {image
+        ? <div className="photothumb"><img src={image} alt="" /><button className="btn ghost sm danger" onClick={onClear}>Remove photo</button></div>
+        : <button className="btn ghost sm" onClick={() => ref.current?.click()}>📷 Add photo</button>}
+    </div>
+  );
+}
 
 export function Editor({ quiz, onPersist, onClose, onHost }: {
   quiz: Quiz; onPersist: (q: Quiz) => void | Promise<void>; onClose: () => void; onHost: (q: Quiz) => void;
@@ -59,8 +73,14 @@ export function Editor({ quiz, onPersist, onClose, onHost }: {
             <span className="pill">Q{qi + 1}</span>
             <button className="btn ghost sm danger" onClick={() => removeQuestion(qi)}>Remove</button>
           </div>
-          <textarea className="inp area" placeholder="Question text…" value={qq.text} rows={2}
+          <textarea className="inp area" placeholder="Question text… (e.g. Whose baby photo is this?)" value={qq.text} rows={2}
             onChange={(e) => patchQ(qi, { text: e.target.value })} />
+
+          <PhotoField image={qq.image} onPick={async (file) => {
+            try { const data = await fileToImageDataURL(file); patchQ(qi, { image: data }); }
+            catch { alert("Couldn't read that image."); }
+          }} onClear={() => patchQ(qi, { image: undefined })} />
+
           <div className="muted small mb">Tap the circle to mark the correct answer.</div>
           {qq.options.map((o, oi) => (
             <div className="optedit" key={oi}>

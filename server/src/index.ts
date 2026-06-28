@@ -36,7 +36,7 @@ function requireKey(req: express.Request, res: express.Response, next: express.N
 app.get("/api/quizzes", requireKey, async (_req, res) => {
   try { res.json(await listQuizzes()); } catch (e: any) { res.status(500).json({ error: e?.message || "list failed" }); }
 });
-app.put("/api/quizzes/:id", express.json({ limit: "1mb" }), requireKey, async (req, res) => {
+app.put("/api/quizzes/:id", express.json({ limit: "30mb" }), requireKey, async (req, res) => {
   try { const q = req.body || {}; q.id = String(req.params.id); await upsertQuiz(q); res.json({ ok: true }); }
   catch (e: any) { res.status(500).json({ error: e?.message || "save failed" }); }
 });

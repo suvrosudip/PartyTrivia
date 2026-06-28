@@ -113,3 +113,10 @@ body { margin:0; font-family:var(--ui); }
 .radio.on { background:var(--good); border-color:var(--good); color:#fff; }
 
 .linkbtn { background:none; border:none; color:var(--accent2); font-weight:700; cursor:pointer; margin-left:8px; text-decoration:underline; font-size:13px; }
+
+/* image questions */
+.photofield { margin:4px 0 10px; }
+.photothumb { display:flex; align-items:center; gap:10px; }
+.photothumb img { width:72px; height:72px; object-fit:cover; border-radius:10px; border:1px solid var(--line); }
+.qimgwrap { text-align:center; margin:6px 0 14px; }
+.qimg { max-width:100%; max-height:46vh; border-radius:16px; box-shadow:0 8px 24px rgba(20,8,40,.3); }

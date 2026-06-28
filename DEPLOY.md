@@ -57,7 +57,9 @@ Endpoints (host-key protected): `GET/PUT/DELETE /api/quizzes`, plus `GET /api/db
 ## Notes / easy upgrades
 - Quizzes live in the host browser's localStorage (no database needed). To share a
   question bank across devices or co-edit, move quizzes into a DB (e.g. Supabase).
-- Photo questions (e.g. "whose baby photo is this?") would need image upload + hosting.
+- Photo questions are built in: each question can have a photo (e.g. a baby pic). It's
+  shown on the big screen; players pick the answer on their phones. Photos are
+  compressed in the browser and stored inside the quiz (no separate image host needed).
 - Read-aloud questions are built in. By default the display uses the browser voice;
   to get a real voice that also works on TV browsers, set ELEVENLABS_API_KEY on the
   SERVER service (see server/.env.example). Google Cloud TTS is also supported and

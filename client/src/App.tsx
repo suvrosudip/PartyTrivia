@@ -14,6 +14,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>("home");
   const [snap, setSnap] = useState<Snap | null>(null);
   const [results, setResults] = useState<Results | null>(null);
+  const [hostedQuiz, setHostedQuiz] = useState<Quiz | null>(null);
   const [sid, setSid] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -39,6 +40,7 @@ export default function App() {
     setError("");
     if (!quiz.questions.length) { setError("Add at least one question first."); return; }
     primeNarration(); // the tap unlocks audio on strict browsers
+    setHostedQuiz(quiz);
     try { const room = await createDisplay(quiz); attach(room, true); setMode("display"); initNarration(); }
     catch { setError("Could not open a room. Is the server running?"); }
   }
@@ -54,7 +56,7 @@ export default function App() {
     try { localStorage.removeItem("pt"); } catch {}
     stopNarration();
     roomRef.current?.leave(true); roomRef.current = null;
-    setSnap(null); setResults(null); setMode("home"); setError("");
+    setSnap(null); setResults(null); setHostedQuiz(null); setMode("home"); setError("");
   }
 
   // ---------------- HOME ----------------
@@ -88,7 +90,7 @@ export default function App() {
   // ---------------- DISPLAY ----------------
   if (mode === "display") {
     if (!snap) return <Shell><div className="card center">Opening room…</div></Shell>;
-    return <Display snap={snap} results={results} send={send} onLeave={leave} />;
+    return <Display snap={snap} results={results} quiz={hostedQuiz} send={send} onLeave={leave} />;
   }
 
   // ---------------- PLAYER ----------------
@@ -207,9 +209,10 @@ function Library({ onHost, onBack, error }: { onHost: (q: Quiz) => void; onBack:
 }
 
 // ============================================================ DISPLAY
-function Display({ snap, results, send, onLeave }: { snap: Snap; results: Results | null; send: (t: string, p?: any) => void; onLeave: () => void }) {
+function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: Results | null; quiz: Quiz | null; send: (t: string, p?: any) => void; onLeave: () => void }) {
   const joinUrl = `${location.origin}/?code=${snap.code}`;
   const players = [...snap.players].sort((a, b) => b.score - a.score);
+  const qImage = quiz?.questions?.[snap.qIndex]?.image;
   const [voiceOn, setVoiceOn] = useState(true);
   const lastSpoke = useRef("");
   useEffect(() => {
@@ -284,6 +287,7 @@ function Display({ snap, results, send, onLeave }: { snap: Snap; results: Result
           <span className="muted small">{snap.answeredCount} / {snap.players.length} answered</span>
         </div>
         {!reveal && <Timer seq={snap.qSeq} secs={snap.timeLimitSec} />}
+        {qImage && <div className="qimgwrap"><img className="qimg" src={qImage} alt="" /></div>}
         <div className="qbig">{snap.qText}</div>
         <div className="optgrid">
           {snap.qOptions.map((o, i) => {

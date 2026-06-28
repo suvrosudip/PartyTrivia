@@ -24,7 +24,7 @@ export type Results = {
 
 export type Quiz = {
   id: string; title: string;
-  questions: { text: string; options: string[]; correct: number; timeLimitSec: number }[];
+  questions: { text: string; options: string[]; correct: number; timeLimitSec: number; image?: string }[];
 };
 
 export function snapshot(state: any): Snap {
@@ -46,8 +46,11 @@ export function snapshot(state: any): Snap {
 }
 
 export async function createDisplay(quiz: Quiz): Promise<Room> {
+  // Images are big; the server only needs text/options/correct for scoring.
+  // The host's display renders photos from its own local copy of the quiz.
+  const light = { ...quiz, questions: quiz.questions.map(({ image, ...q }) => q) };
   const client = new Client(ENDPOINT);
-  return client.create("trivia", { display: true, quiz });
+  return client.create("trivia", { display: true, quiz: light });
 }
 
 export async function joinByCode(code: string, name: string): Promise<Room> {
