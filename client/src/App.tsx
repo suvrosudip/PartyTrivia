@@ -6,6 +6,7 @@ import { narrate, stopNarration, primeNarration, testNarration, initNarration } 
 import { newQuiz, newQuestion } from "./quizzes";
 import * as store from "./store";
 import { Editor } from "./Editor";
+import { StringLights, HeroScene, Ambiance, Trophy, EmptyArt } from "./graphics";
 
 type Mode = "home" | "library" | "display" | "player";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -64,6 +65,7 @@ export default function App() {
     return (
       <Shell>
         <div className="hero">
+          <HeroScene />
           <div className="logo">Party<span>Trivia</span></div>
           <div className="tag">How well do your guests know each other?</div>
         </div>
@@ -188,7 +190,7 @@ function Library({ onHost, onBack, error }: { onHost: (q: Quiz) => void; onBack:
       {error && <div className="err">{error}</div>}
       {err && <div className="err">{err}</div>}
       {loading && <div className="card muted center">Loading…</div>}
-      {!loading && !quizzes.length && <div className="card muted center">No quizzes yet. Create one to get started.</div>}
+      {!loading && !quizzes.length && <div className="card center"><EmptyArt /><div className="qtitle">No quizzes yet</div><div className="muted small">Create one and start adding questions about your guests.</div></div>}
       {quizzes.map((q) => (
         <div className="card qrow" key={q.id}>
           <div>
@@ -248,6 +250,8 @@ function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: 
     return (
       <Shell wide>
         <div className="card center">
+          <Confetti />
+          <Trophy />
           <div className="logo small">Results</div>
           <div className="podium">
             {results.podium.map((p, i) => (
@@ -380,9 +384,23 @@ function Timer({ seq, secs }: { seq: number; secs: number }) {
     return () => clearInterval(iv);
   }, [seq, secs]);
   const pct = Math.max(0, Math.min(100, (left / secs) * 100));
-  return <div className="timer"><div className="timerbar" style={{ width: pct + "%" }} /><span className="timernum">{Math.ceil(left)}</span></div>;
+  const color = pct > 50 ? "var(--good)" : pct > 22 ? "var(--a2)" : "var(--bad)";
+  const low = left <= 5;
+  return <div className={"timer" + (low ? " low" : "")}><div className="timerbar" style={{ width: pct + "%", backgroundColor: color }} /><span className="timernum">{Math.ceil(left)}</span></div>;
+}
+
+function Confetti() {
+  const colors = ["var(--punch)", "var(--gold)", "var(--zap)", "var(--good)", "var(--a1)", "var(--a2)"];
+  const shapes = ["", "c", "s"]; // rectangle, circle, streamer
+  return (
+    <div className="confetti" aria-hidden="true">
+      {Array.from({ length: 32 }, (_, i) => (
+        <i key={i} className={shapes[i % 3]} style={{ left: Math.random() * 100 + "%", background: colors[i % colors.length], animationDelay: (Math.random() * 3).toFixed(2) + "s", animationDuration: (2.5 + Math.random() * 2.5).toFixed(2) + "s" }} />
+      ))}
+    </div>
+  );
 }
 
 function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
-  return <div className="bg"><div className={"wrap" + (wide ? " wide" : "")}>{children}</div></div>;
+  return <div className="bg"><Ambiance /><StringLights /><div className={"wrap" + (wide ? " wide" : "")}>{children}</div></div>;
 }

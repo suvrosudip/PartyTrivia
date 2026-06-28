@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Quiz } from "./net";
 import { newQuestion } from "./quizzes";
 import { fileToImageDataURL } from "./imageutil";
+import { StringLights, Ambiance } from "./graphics";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
@@ -58,7 +59,7 @@ export function Editor({ quiz, onPersist, onClose, onHost }: {
   const ready = q.questions.length > 0 && q.questions.every((x) => x.text.trim() && x.options.filter((o) => o.trim()).length >= 2);
 
   return (
-    <div className="bg"><div className="wrap">
+    <div className="bg"><Ambiance /><StringLights /><div className="wrap">
       <div className="row spread">
         <button className="btn ghost sm" onClick={async () => { await flush(); onClose(); }}>← Done</button>
         <div className="lbl">{saved ? "Edit quiz · saved" : "Edit quiz · saving…"}</div>
