@@ -281,8 +281,9 @@ function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: 
     );
   }
 
-  // question / reveal
+  // question / locked / reveal
   const reveal = snap.phase === "reveal";
+  const locked = snap.phase === "locked";
   return (
     <Shell wide>
       <div className="card">
@@ -290,7 +291,8 @@ function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: 
           <span className="pill">Question {snap.qIndex + 1} / {snap.qTotal}</span>
           <span className="muted small">{snap.answeredCount} / {snap.players.length} answered</span>
         </div>
-        {!reveal && <Timer seq={snap.qSeq} secs={snap.timeLimitSec} />}
+        {snap.phase === "question" && <Timer seq={snap.qSeq} secs={snap.timeLimitSec} />}
+        {locked && <div className="timesup">⏱ Time’s up — answers locked</div>}
         {qImage && <div className="qimgwrap"><img className="qimg" src={qImage} alt="" /></div>}
         <div className="qbig">{snap.qText}</div>
         <div className="optgrid">
@@ -300,9 +302,9 @@ function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: 
           })}
         </div>
         <div className="bar center">
-          {reveal
-            ? <button className="btn solid" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>
-            : <button className="btn ghost" onClick={() => send("next")}>Reveal now</button>}
+          {snap.phase === "question" && <button className="btn ghost" onClick={() => send("next")}>End answers →</button>}
+          {locked && <button className="btn solid" onClick={() => send("next")}>Reveal answer →</button>}
+          {reveal && <button className="btn solid" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>}
           <button className="btn ghost" onClick={toggleVoice}>🔊 {voiceOn ? "on" : "off"}</button>
         </div>
       </div>
@@ -345,6 +347,13 @@ function Player({ snap, me, results, send, onLeave }: { snap: Snap; me?: PlayerS
                 </button>
               ))}
             </div>
+      )}
+
+      {snap.phase === "locked" && me && (
+        <div className="card center">
+          <div className="big">{me.answered ? "Locked in ✓" : "Time’s up!"}</div>
+          <div className="muted">Watch the big screen for the answer…</div>
+        </div>
       )}
 
       {snap.phase === "reveal" && me && (

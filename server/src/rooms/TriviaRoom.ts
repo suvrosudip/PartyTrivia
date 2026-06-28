@@ -109,7 +109,7 @@ export class TriviaRoom extends Room<TriviaState> {
     this.state.qSeq++;
     this.qStart = Date.now();
     this.state.players.forEach((p) => { p.answered = false; p.lastDelta = 0; p.lastCorrect = false; });
-    this.clock.setTimeout(() => { if (gen === this.gen && this.state.phase === "question") this.revealQuestion(); }, q.timeLimitSec * 1000);
+    this.clock.setTimeout(() => { if (gen === this.gen && this.state.phase === "question") this.closeQuestion(); }, q.timeLimitSec * 1000);
   }
 
   private submitAnswer(c: Client, index?: number) {
@@ -141,28 +141,37 @@ export class TriviaRoom extends Room<TriviaState> {
     p.lastCorrect = correct;
     (this.answers.get(c.sessionId) || []).push({ q: this.state.qIndex, opt: index as number, ms, correct });
 
-    // everyone answered -> reveal early
+    // everyone answered -> lock the question; host controls the reveal
     let allIn = true;
     this.state.players.forEach((pl) => { if (pl.connected && !pl.answered) allIn = false; });
-    if (allIn) this.revealQuestion();
+    if (allIn) this.closeQuestion();
   }
 
-  private revealQuestion() {
+  // Time's up (or all answered, or host skipped): lock answers, but keep the
+  // correct answer hidden until the host chooses to reveal it.
+  private closeQuestion() {
+    if (this.state.phase !== "question") return;
     this.gen++; // cancel the pending timeout
     const q = this.questions[this.state.qIndex];
-    // players who didn't answer count as wrong, logged as null
     this.state.players.forEach((p, sid) => {
       if (!p.answered) {
         p.wrongCount++; p.streak = 0; p.lastDelta = 0; p.lastCorrect = false;
         (this.answers.get(sid) || []).push({ q: this.state.qIndex, opt: null, ms: q.timeLimitSec * 1000, correct: false });
       }
     });
-    this.state.revealIndex = q.correct;
+    this.state.phase = "locked";
+  }
+
+  // Host reveals the correct answer + leaderboard.
+  private revealAnswer() {
+    if (this.state.phase !== "locked") return;
+    this.state.revealIndex = this.questions[this.state.qIndex].correct;
     this.state.phase = "reveal";
   }
 
   private advance() {
-    if (this.state.phase === "question") return this.revealQuestion();
+    if (this.state.phase === "question") return this.closeQuestion();
+    if (this.state.phase === "locked") return this.revealAnswer();
     if (this.state.phase !== "reveal") return;
     if (this.state.qIndex + 1 >= this.questions.length) return this.finish();
     this.state.qIndex++;

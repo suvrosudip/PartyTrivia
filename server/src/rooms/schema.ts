@@ -15,7 +15,7 @@ export class PlayerState extends Schema {
 
 export class TriviaState extends Schema {
   @type("string") code = "";
-  @type("string") phase = "lobby";     // lobby | question | reveal | results
+  @type("string") phase = "lobby";     // lobby | question | locked | reveal | results
   @type("string") quizTitle = "";
   @type("number") qIndex = 0;          // 0-based
   @type("number") qTotal = 0;
