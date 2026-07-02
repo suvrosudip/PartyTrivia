@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Room } from "colyseus.js";
 import { QRCodeSVG } from "qrcode.react";
-import { createDisplay, joinByCode, snapshot, Snap, PlayerSnap, Results, Quiz } from "./net";
+import { createDisplay, joinByCode, reconnect, snapshot, Snap, PlayerSnap, Results, Quiz } from "./net";
 import { narrate, stopNarration, primeNarration, testNarration, initNarration } from "./narrator";
 import { newQuiz, newQuestion } from "./quizzes";
 import * as store from "./store";
@@ -20,22 +20,80 @@ export default function App() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [hostKey, setHostKey] = useState("");       // present when arriving via the host QR
+  const [displayHostKey, setDisplayHostKey] = useState(""); // received by the display, shown as a QR
+  const [reconnecting, setReconnecting] = useState(false);
   const roomRef = useRef<Room | null>(null);
+  const modeRef = useRef<Mode>("home");
+  useEffect(() => { modeRef.current = mode; }, [mode]);
 
   useEffect(() => {
-    const c = new URLSearchParams(location.search).get("code");
+    const params = new URLSearchParams(location.search);
+    const c = params.get("code");
     if (c) setCode(c.toUpperCase());
+    const hk = params.get("hk");
+    if (hk) setHostKey(hk.toUpperCase());
   }, []);
 
   function attach(room: Room, asDisplay: boolean) {
     roomRef.current = room;
     setSid(room.sessionId);
     setResults(null);
+    setReconnecting(false);
     room.onStateChange((s: any) => setSnap(snapshot(s)));
     room.onMessage("results", (r: Results) => setResults(r));
-    if (!asDisplay) { try { localStorage.setItem("pt", JSON.stringify({ token: room.reconnectionToken })); } catch {} }
+    if (asDisplay) {
+      room.onMessage("host-info", (m: any) => setDisplayHostKey(m?.hostKey || ""));
+    } else {
+      try { localStorage.setItem("pt", JSON.stringify({ token: room.reconnectionToken })); } catch {}
+      // phones drop the socket when the screen sleeps — reconnect quietly
+      room.onLeave((codeNum) => { if (codeNum !== 1000 && modeRef.current === "player") resume(); });
+    }
     room.onError((_c, m) => setError(m || "Connection error"));
   }
+
+  async function resume() {
+    if (roomRef.current && (roomRef.current as any).connection?.isOpen) return;
+    let saved: any = null;
+    try { saved = JSON.parse(localStorage.getItem("pt") || "null"); } catch {}
+    if (!saved?.token) return;
+    setReconnecting(true);
+    for (let i = 0; i < 5; i++) {
+      try { const room = await reconnect(saved.token); attach(room, false); return; }
+      catch { await new Promise((r) => setTimeout(r, 800 * (i + 1))); }
+    }
+    setReconnecting(false);
+    setError("Lost connection — rejoin with the room code.");
+  }
+
+  // wake from sleep / return to app / network back → check socket
+  useEffect(() => {
+    const check = () => {
+      if (modeRef.current !== "player") return;
+      if (!(roomRef.current as any)?.connection?.isOpen) resume();
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("online", check);
+    window.addEventListener("pageshow", check);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("online", check);
+      window.removeEventListener("pageshow", check);
+    };
+  }, []);
+
+  // keep phone screens awake mid-game
+  useEffect(() => {
+    if (mode !== "player") return;
+    let lock: any = null;
+    const grab = async () => { try { lock = await (navigator as any).wakeLock?.request("screen"); } catch {} };
+    grab();
+    const regrab = () => { if (document.visibilityState === "visible") grab(); };
+    document.addEventListener("visibilitychange", regrab);
+    return () => { document.removeEventListener("visibilitychange", regrab); try { lock?.release(); } catch {} };
+  }, [mode]);
 
   async function hostQuiz(quiz: Quiz) {
     setError("");
@@ -49,7 +107,7 @@ export default function App() {
     setError("");
     if (!name.trim()) { setError("Enter your name."); return; }
     if (code.trim().length < 4) { setError("Enter the 4-letter code."); return; }
-    try { const room = await joinByCode(code, name); attach(room, false); setMode("player"); }
+    try { const room = await joinByCode(code, name, hostKey || undefined); attach(room, false); setMode("player"); }
     catch { setError("No game found with that code."); }
   }
   function send(type: string, payload?: any) { roomRef.current?.send(type, payload); }
@@ -66,11 +124,11 @@ export default function App() {
       <Shell>
         <div className="hero">
           <HeroScene />
-          <div className="logo">Party<span>Trivia</span></div>
-          <div className="tag">How well do your guests know each other?</div>
+          <div className="logo">Trivia<span>Party</span></div>
         </div>
         <div className="card">
-          <div className="lbl">Join a game</div>
+          <div className="lbl">{hostKey ? "👑 Join as the host" : "Join a game"}</div>
+          {hostKey ? <div className="muted small mb">You scanned the host code — you'll get the game controls on your phone (and you can play along too).</div> : null}
           <input className="inp" placeholder="Your name" value={name} maxLength={16} onChange={(e) => setName(e.target.value)} />
           <input className="inp code" placeholder="CODE" value={code} maxLength={4}
             onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))} />
@@ -92,13 +150,16 @@ export default function App() {
   // ---------------- DISPLAY ----------------
   if (mode === "display") {
     if (!snap) return <Shell><div className="card center">Opening room…</div></Shell>;
-    return <Display snap={snap} results={results} quiz={hostedQuiz} send={send} onLeave={leave} />;
+    return <Display snap={snap} results={results} quiz={hostedQuiz} hostKey={displayHostKey} send={send} onLeave={leave} />;
   }
 
   // ---------------- PLAYER ----------------
-  if (!snap) return <Shell><div className="card center">Connecting…</div></Shell>;
+  if (!snap) return <Shell><div className="card center">{reconnecting ? "⟳ Reconnecting…" : "Connecting…"}</div></Shell>;
   const me = snap.players.find((p) => p.id === sid);
-  return <Player snap={snap} me={me} results={results} send={send} onLeave={leave} />;
+  return <>
+    {reconnecting && <div className="reconnect">⟳ Reconnecting…</div>}
+    <Player snap={snap} me={me} results={results} send={send} onLeave={leave} />
+  </>;
 }
 
 // ============================================================ LIBRARY
@@ -211,8 +272,10 @@ function Library({ onHost, onBack, error }: { onHost: (q: Quiz) => void; onBack:
 }
 
 // ============================================================ DISPLAY
-function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: Results | null; quiz: Quiz | null; send: (t: string, p?: any) => void; onLeave: () => void }) {
+function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; results: Results | null; quiz: Quiz | null; hostKey: string; send: (t: string, p?: any) => void; onLeave: () => void }) {
   const joinUrl = `${location.origin}/?code=${snap.code}`;
+  const hostJoinUrl = `${location.origin}/?code=${snap.code}&hk=${hostKey}`;
+  const hostJoined = snap.players.some((p) => p.isHost);
   const players = [...snap.players].sort((a, b) => b.score - a.score);
   const qImage = quiz?.questions?.[snap.qIndex]?.image;
   const [voiceOn, setVoiceOn] = useState(true);
@@ -233,7 +296,7 @@ function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: 
           <div className="qr"><QRCodeSVG value={joinUrl} size={200} /></div>
           <div className="muted small">scan to join, or go to {location.host}</div>
           <div className="bigcode">{snap.code}</div>
-          <div className="chips center">{snap.players.map((p) => <span className="chip" key={p.id}>{p.name}</span>)}</div>
+          <div className="chips center">{snap.players.map((p) => <span className="chip" key={p.id}>{p.name}{p.isHost ? " 👑" : ""}</span>)}</div>
           <div className="bar center">
             <button className="btn solid" disabled={snap.players.length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>
             <button className="btn ghost" onClick={toggleVoice}>🔊 Voice {voiceOn ? "on" : "off"}</button>
@@ -242,6 +305,17 @@ function Display({ snap, results, quiz, send, onLeave }: { snap: Snap; results: 
           </div>
           <div className="muted small">{snap.players.length} joined</div>
         </div>
+        {hostKey && (
+          <div className="card center hostpanel">
+            <div className="lbl">👑 Run it from your phone</div>
+            {hostJoined
+              ? <div className="muted small">Host connected — the game can be started and stepped from their phone.</div>
+              : <>
+                  <div className="hostqr"><QRCodeSVG value={hostJoinUrl} size={110} /></div>
+                  <div className="muted small">Host: scan this <b>private</b> code to get Start / Reveal / Next on your phone — you can play along too. Everyone else uses the big code above.</div>
+                </>}
+          </div>
+        )}
       </Shell>
     );
   }
@@ -332,10 +406,16 @@ function Player({ snap, me, results, send, onLeave }: { snap: Snap; me?: PlayerS
     <Shell>
       <div className="row spread">
         <span className="pill">{snap.code}</span>
-        <span className="muted small">{me?.name} · {me?.score ?? 0} pts</span>
+        <span className="muted small">{me?.isHost ? "👑 " : ""}{me?.name} · {me?.score ?? 0} pts</span>
       </div>
 
-      {snap.phase === "lobby" && <div className="card center muted">You’re in! Watch the big screen — the host will start soon.</div>}
+      {me?.isHost && <HostBar snap={snap} send={send} />}
+
+      {snap.phase === "lobby" && (
+        me?.isHost
+          ? <div className="card center muted">You're the host 👑 — start the game when everyone's on the big screen.</div>
+          : <div className="card center muted">You’re in! Watch the big screen — the host will start soon.</div>
+      )}
 
       {snap.phase === "question" && me && (
         me.answered
@@ -376,6 +456,20 @@ function Player({ snap, me, results, send, onLeave }: { snap: Snap; me?: PlayerS
         </div>
       )}
     </Shell>
+  );
+}
+
+// Host controls on the phone: mirrors the display's buttons for each phase.
+function HostBar({ snap, send }: { snap: Snap; send: (t: string, p?: any) => void }) {
+  return (
+    <div className="hostbar">
+      <span className="hostbadge">👑 Host controls</span>
+      {snap.phase === "lobby" && <button className="btn solid sm" disabled={snap.players.length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>}
+      {snap.phase === "question" && <button className="btn ghost sm" onClick={() => send("next")}>End answers →</button>}
+      {snap.phase === "locked" && <button className="btn solid sm" onClick={() => send("next")}>Reveal answer →</button>}
+      {snap.phase === "reveal" && <button className="btn solid sm" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>}
+      {snap.phase === "results" && <button className="btn ghost sm" onClick={() => send("reset")}>Back to lobby</button>}
+    </div>
   );
 }
 

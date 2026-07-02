@@ -6,6 +6,7 @@ export type PlayerSnap = {
   id: string; name: string; connected: boolean; score: number;
   answered: boolean; lastDelta: number; lastCorrect: boolean;
   correctCount: number; wrongCount: number; streak: number; bestStreak: number;
+  isHost: boolean;
 };
 export type Snap = {
   code: string; phase: string; quizTitle: string;
@@ -33,7 +34,7 @@ export function snapshot(state: any): Snap {
     players.push({
       id, name: p.name, connected: p.connected, score: p.score, answered: p.answered,
       lastDelta: p.lastDelta, lastCorrect: p.lastCorrect, correctCount: p.correctCount,
-      wrongCount: p.wrongCount, streak: p.streak, bestStreak: p.bestStreak,
+      wrongCount: p.wrongCount, streak: p.streak, bestStreak: p.bestStreak, isHost: !!p.isHost,
     });
   });
   return {
@@ -53,13 +54,13 @@ export async function createDisplay(quiz: Quiz): Promise<Room> {
   return client.create("trivia", { display: true, quiz: light });
 }
 
-export async function joinByCode(code: string, name: string): Promise<Room> {
+export async function joinByCode(code: string, name: string, hostKey?: string): Promise<Room> {
   const clean = code.trim().toUpperCase();
   const res = await fetch(`${ENDPOINT}/api/room/${clean}`);
   if (!res.ok) throw new Error("No room with that code");
   const { roomId } = await res.json();
   const client = new Client(ENDPOINT);
-  return client.joinById(roomId, { name });
+  return client.joinById(roomId, hostKey ? { name, hostKey } : { name });
 }
 
 export async function reconnect(token: string): Promise<Room> {

@@ -24,7 +24,7 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
   position:relative; min-height:100dvh; overflow:hidden;
   background:
     radial-gradient(120% 80% at 50% -10%, var(--stage-2) 0%, var(--stage-1) 45%, var(--stage-edge) 100%);
-  display:flex; justify-content:center; padding:20px 16px 40px;
+  display:flex; justify-content:center; padding:clamp(10px,2vh,20px) 16px clamp(16px,3.5vh,40px);
 }
 .bg::before { /* spotlight beam */
   content:""; position:absolute; inset:0; pointer-events:none;
@@ -40,7 +40,7 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
     radial-gradient(2px 2px at 90% 72%, rgba(255,255,255,.4), transparent);
 }
 .wrap { position:relative; z-index:1; width:100%; max-width:460px; animation:rise .5s cubic-bezier(.2,.8,.2,1) both; }
-.wrap.wide { max-width:920px; }
+.wrap.wide { max-width:min(1000px, 96vw); }
 @keyframes rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
 
 /* ---------- hero ---------- */
@@ -97,7 +97,7 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
 /* ---------- lobby / marquee code ---------- */
 .qr { background:#fff; padding:16px; border-radius:18px; display:inline-block; margin:8px 0 4px; box-shadow:var(--shadow-sm); }
 .bigcode {
-  font-family:var(--display); font-weight:800; font-size:68px; letter-spacing:.16em; line-height:1.05;
+  font-family:var(--display); font-weight:800; font-size:clamp(44px,9vh,72px); letter-spacing:.16em; line-height:1.05;
   margin:10px 0 4px; padding-left:.16em;
   background:linear-gradient(135deg, var(--punch), var(--gold)); -webkit-background-clip:text; background-clip:text; color:transparent;
   filter:drop-shadow(0 4px 18px rgba(255,61,127,.35)); animation:glow 3.2s ease-in-out infinite;
@@ -116,11 +116,11 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
 .timernum { position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:11px; font-weight:800; color:var(--ink); font-family:var(--display); }
 
 /* ---------- question ---------- */
-.qbig { font-family:var(--display); font-size:32px; font-weight:700; line-height:1.15; letter-spacing:-.01em; margin:8px 0 20px; }
+.qbig { font-family:var(--display); font-size:clamp(22px,4.2vh,36px); font-weight:700; line-height:1.15; letter-spacing:-.01em; margin:8px 0 clamp(10px,2vh,20px); }
 .qimgwrap { text-align:center; margin:4px 0 16px; }
-.qimg { max-width:100%; max-height:46vh; border-radius:18px; box-shadow:var(--shadow); }
+.qimg { max-width:100%; max-height:38vh; border-radius:18px; box-shadow:var(--shadow); }
 .optgrid { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
-.opt { padding:20px; border-radius:16px; color:#fff; font-weight:800; font-size:19px; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow-sm); transition:transform .2s, opacity .25s, filter .25s; }
+.opt { padding:clamp(12px,2.2vh,20px); border-radius:16px; color:#fff; font-weight:800; font-size:19px; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow-sm); transition:transform .2s, opacity .25s, filter .25s; }
 .opt.dim { opacity:.35; filter:grayscale(.5); transform:scale(.97); }
 .opt.right { transform:scale(1.03); box-shadow:0 0 0 4px #fff, 0 0 0 9px var(--good), var(--shadow); }
 .optltr { background:rgba(255,255,255,.28); width:32px; height:32px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; font-family:var(--display); flex:0 0 auto; }
@@ -181,7 +181,7 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
 }
 
 /* ---------- graphics ---------- */
-.bg { padding-top:46px; }
+.bg { padding-top:clamp(30px,5vh,46px); }
 .lights { position:absolute; top:0; left:0; right:0; height:40px; display:flex; justify-content:space-evenly; align-items:flex-start; z-index:3; pointer-events:none; }
 .lights::before { content:""; position:absolute; top:7px; left:-1%; right:-1%; height:0; border-top:3px dotted rgba(0,0,0,.28); }
 .bulb { width:13px; height:17px; margin-top:7px; border-radius:50% 50% 48% 48% / 58% 58% 42% 42%;
@@ -235,3 +235,12 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
 
 /* time's up banner (host-controlled reveal) */
 .timesup { background:linear-gradient(135deg, var(--bad), #ff7a85); color:#fff; font-family:var(--display); font-weight:700; text-align:center; border-radius:12px; padding:10px; margin:6px 0 14px; box-shadow:var(--shadow-sm); }
+
+/* ---------- host-from-phone ---------- */
+.hostpanel { border:2px dashed var(--gold); }
+.hostqr { background:#fff; padding:10px; border-radius:14px; display:inline-block; margin:6px 0; box-shadow:var(--shadow-sm); }
+.hostbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface); border:2px solid var(--gold);
+  border-radius:16px; padding:10px 14px; margin:12px 0; box-shadow:var(--shadow-sm); }
+.hostbadge { font-family:var(--display); font-weight:800; font-size:12px; letter-spacing:.06em; color:var(--ink); opacity:.75; }
+.reconnect { position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:50;
+  background:var(--surface); color:var(--ink); font-weight:800; font-size:13px; border-radius:999px; padding:8px 16px; box-shadow:var(--shadow); }

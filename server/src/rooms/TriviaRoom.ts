@@ -12,6 +12,8 @@ export class TriviaRoom extends Room<TriviaState> {
 
   private questions: Q[] = [];
   private displayId = "";
+  private hostKey = "";                            // secret; lets a phone control the game
+  private hostIds = new Set<string>();
   private answers = new Map<string, Answer[]>();   // sid -> per-question answers
   private qStart = 0;                               // server ms when current question opened
   private gen = 0;                                  // invalidates stale timers
@@ -24,6 +26,7 @@ export class TriviaRoom extends Room<TriviaState> {
     codeToRoom.set(code, this.roomId);
 
     this.loadQuiz(options?.quiz);
+    this.hostKey = Math.random().toString(36).slice(2, 8).toUpperCase();
 
     this.onMessage("start", (c) => { if (this.canControl(c)) this.startGame(); });
     this.onMessage("next", (c) => { if (this.canControl(c)) this.advance(); });
@@ -32,9 +35,18 @@ export class TriviaRoom extends Room<TriviaState> {
   }
 
   onJoin(client: Client, options: any) {
-    if (options?.display) { this.displayId = client.sessionId; return; }
+    if (options?.display) {
+      this.displayId = client.sessionId;
+      // the display shows a private "host controls" QR built from this key
+      client.send("host-info", { hostKey: this.hostKey });
+      return;
+    }
     const p = new PlayerState();
     p.name = (String(options?.name || "Player").slice(0, 16)) || "Player";
+    if (options?.hostKey && String(options.hostKey).toUpperCase() === this.hostKey) {
+      p.isHost = true;
+      this.hostIds.add(client.sessionId);
+    }
     this.state.players.set(client.sessionId, p);
     this.answers.set(client.sessionId, []);
   }
@@ -52,6 +64,7 @@ export class TriviaRoom extends Room<TriviaState> {
       if (this.state.phase === "lobby") {
         this.state.players.delete(client.sessionId);
         this.answers.delete(client.sessionId);
+        this.hostIds.delete(client.sessionId);
       }
     }
   }
@@ -66,7 +79,7 @@ export class TriviaRoom extends Room<TriviaState> {
     while (codeToRoom.has(code));
     return code;
   }
-  private canControl(c: Client) { return c.sessionId === this.displayId; }
+  private canControl(c: Client) { return c.sessionId === this.displayId || this.hostIds.has(c.sessionId); }
 
   private loadQuiz(quiz: any) {
     const qs: Q[] = [];

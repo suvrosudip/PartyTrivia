@@ -11,6 +11,7 @@ export class PlayerState extends Schema {
   @type("number") wrongCount = 0;
   @type("number") streak = 0;
   @type("number") bestStreak = 0;
+  @type("boolean") isHost = false;     // joined with the host key; can control the game
 }
 
 export class TriviaState extends Schema {
