@@ -279,6 +279,7 @@ export class TriviaRoom extends Room<TriviaState> {
     this.state.phase = "results";
     this.sim = false;            // stop auto-advancing; results stay on screen
     this.simGen++;
+    this.state.simulating = false; // sim is over — drop the "◆ Simulation" badge
     this.broadcast("results", this.computeResults());
   }
 
