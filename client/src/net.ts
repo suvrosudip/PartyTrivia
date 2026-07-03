@@ -6,13 +6,13 @@ export type PlayerSnap = {
   id: string; name: string; connected: boolean; score: number;
   answered: boolean; lastDelta: number; lastCorrect: boolean;
   correctCount: number; wrongCount: number; streak: number; bestStreak: number;
-  isHost: boolean;
+  sumCorrectMs: number; isHost: boolean; bot: boolean;
 };
 export type Snap = {
   code: string; phase: string; quizTitle: string;
   qIndex: number; qTotal: number; qSeq: number;
   qText: string; qOptions: string[]; revealIndex: number;
-  timeLimitSec: number; answeredCount: number;
+  timeLimitSec: number; answeredCount: number; simulating: boolean;
   players: PlayerSnap[];
 };
 export type ResultsCategory = { key: string; emoji: string; label: string; winner: string; detail: string };
@@ -34,7 +34,8 @@ export function snapshot(state: any): Snap {
     players.push({
       id, name: p.name, connected: p.connected, score: p.score, answered: p.answered,
       lastDelta: p.lastDelta, lastCorrect: p.lastCorrect, correctCount: p.correctCount,
-      wrongCount: p.wrongCount, streak: p.streak, bestStreak: p.bestStreak, isHost: !!p.isHost,
+      wrongCount: p.wrongCount, streak: p.streak, bestStreak: p.bestStreak,
+      sumCorrectMs: p.sumCorrectMs || 0, isHost: !!p.isHost, bot: !!p.bot,
     });
   });
   return {
@@ -42,7 +43,7 @@ export function snapshot(state: any): Snap {
     qIndex: state.qIndex, qTotal: state.qTotal, qSeq: state.qSeq,
     qText: state.qText, qOptions: Array.from(state.qOptions || []),
     revealIndex: state.revealIndex, timeLimitSec: state.timeLimitSec,
-    answeredCount: state.answeredCount, players,
+    answeredCount: state.answeredCount, simulating: !!state.simulating, players,
   };
 }
 
@@ -66,4 +67,15 @@ export async function joinByCode(code: string, name: string, hostKey?: string): 
 export async function reconnect(token: string): Promise<Room> {
   const client = new Client(ENDPOINT);
   return client.reconnect(token);
+}
+
+// Ranking rule (matches the server): most correct answers wins; ties broken by
+// who was faster on average (their correct answers); score is the final fallback.
+// The host never competes, so they're filtered out.
+export function avgCorrectMs(p: PlayerSnap): number {
+  return p.correctCount > 0 ? p.sumCorrectMs / p.correctCount : Infinity;
+}
+export function rankPlayers(players: PlayerSnap[]): PlayerSnap[] {
+  return players.filter((p) => !p.isHost).sort((a, b) =>
+    (b.correctCount - a.correctCount) || (avgCorrectMs(a) - avgCorrectMs(b)) || (b.score - a.score));
 }

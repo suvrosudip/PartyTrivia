@@ -7,6 +7,10 @@ type Answer = { q: number; opt: number | null; ms: number; correct: boolean };
 
 const BASE_POINTS = 1000;
 
+// Pacing (ms) for fully-automatic simulation, and a pool of party-guest bot names.
+const SIM = { reveal: 4500, next: 1500 };
+const BOT_NAMES = ["Ada", "Bex", "Cyrus", "Dot", "Enzo", "Fern", "Gus", "Hana", "Iggy", "Juno", "Kit", "Lola", "Milo", "Nova", "Otis", "Pax", "Remy", "Sable", "Tao", "Uma"];
+
 export class TriviaRoom extends Room<TriviaState> {
   maxClients = 60;
 
@@ -17,6 +21,10 @@ export class TriviaRoom extends Room<TriviaState> {
   private answers = new Map<string, Answer[]>();   // sid -> per-question answers
   private qStart = 0;                               // server ms when current question opened
   private gen = 0;                                  // invalidates stale timers
+  private bots = new Set<string>();                 // sids of simulated players
+  private botSkill = new Map<string, number>();     // sid -> 0..1 chance of answering correctly
+  private sim = false;                              // fully-auto: room advances itself
+  private simGen = 0;                               // invalidates stale sim timers
 
   onCreate(options: any) {
     this.setState(new TriviaState());
@@ -31,6 +39,7 @@ export class TriviaRoom extends Room<TriviaState> {
     this.onMessage("start", (c) => { if (this.canControl(c)) this.startGame(); });
     this.onMessage("next", (c) => { if (this.canControl(c)) this.advance(); });
     this.onMessage("reset", (c) => { if (this.canControl(c)) this.resetToLobby(); });
+    this.onMessage("simulate", (c, m) => { if (this.canControl(c) && this.state.phase === "lobby") this.startSimulation(m?.count); });
     this.onMessage("answer", (c, m) => this.submitAnswer(c, m?.index));
   }
 
@@ -102,11 +111,37 @@ export class TriviaRoom extends Room<TriviaState> {
   private startGame() {
     if (this.state.phase !== "lobby" || !this.questions.length || this.state.players.size < 1) return;
     this.state.players.forEach((p) => {
-      p.score = 0; p.correctCount = 0; p.wrongCount = 0; p.streak = 0; p.bestStreak = 0; p.lastDelta = 0; p.lastCorrect = false;
+      p.score = 0; p.correctCount = 0; p.sumCorrectMs = 0; p.wrongCount = 0; p.streak = 0; p.bestStreak = 0; p.lastDelta = 0; p.lastCorrect = false;
     });
     this.answers.forEach((_v, k) => this.answers.set(k, []));
     this.state.qIndex = 0;
     this.openQuestion();
+  }
+
+  // Fill the room with bot players and play a whole game automatically — no other
+  // people or host needed. Great for demos and testing on your own.
+  private startSimulation(count?: number) {
+    if (this.state.phase !== "lobby" || !this.questions.length) return;
+    const target = Math.max(2, Math.min(10, count && count > 0 ? count : 5));
+    const names = [...BOT_NAMES];
+    for (let i = names.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [names[i], names[j]] = [names[j], names[i]]; }
+    // Top up to `target` bots (in case a previous partial sim left some behind).
+    let added = this.bots.size;
+    let bi = 0;
+    while (added < target && bi < names.length) {
+      const id = "bot_" + Math.random().toString(36).slice(2, 9);
+      const p = new PlayerState();
+      p.name = names[bi++]; p.bot = true;
+      this.state.players.set(id, p);
+      this.answers.set(id, []);
+      this.bots.add(id);
+      this.botSkill.set(id, 0.45 + Math.random() * 0.5); // 45%–95% accuracy, varied
+      added++;
+    }
+    this.sim = true;
+    this.simGen++;
+    this.state.simulating = true;
+    this.startGame();
   }
 
   private openQuestion() {
@@ -123,13 +158,49 @@ export class TriviaRoom extends Room<TriviaState> {
     this.qStart = Date.now();
     this.state.players.forEach((p) => { p.answered = false; p.lastDelta = 0; p.lastCorrect = false; });
     this.clock.setTimeout(() => { if (gen === this.gen && this.state.phase === "question") this.closeQuestion(); }, q.timeLimitSec * 1000);
+    this.scheduleBotAnswers();
+  }
+
+  // Each bot answers after a randomized "thinking" delay, with accuracy set by its skill.
+  private scheduleBotAnswers() {
+    if (!this.bots.size) return;
+    const q = this.questions[this.state.qIndex];
+    const limit = q.timeLimitSec * 1000;
+    const gen = this.gen;
+    for (const sid of this.bots) {
+      const skill = this.botSkill.get(sid) ?? 0.6;
+      // faster, smarter bots answer sooner; everyone answers within ~85% of the limit
+      const base = 900 + Math.random() * (limit * 0.7);
+      const delay = Math.min(limit - 400, base * (1.25 - skill * 0.5));
+      this.clock.setTimeout(() => {
+        if (gen !== this.gen || this.state.phase !== "question") return;
+        const p = this.state.players.get(sid);
+        if (!p || p.answered) return;
+        const pick = Math.random() < skill
+          ? q.correct
+          : this.randomWrong(q);
+        this.applyAnswer(sid, pick);
+      }, delay);
+    }
+  }
+
+  private randomWrong(q: Q): number {
+    const wrong = q.options.map((_, i) => i).filter((i) => i !== q.correct);
+    return wrong.length ? wrong[Math.floor(Math.random() * wrong.length)] : q.correct;
   }
 
   private submitAnswer(c: Client, index?: number) {
-    if (this.state.phase !== "question") return;
     const p = this.state.players.get(c.sessionId);
+    if (!p || p.isHost) return; // the host runs the game, doesn't play
+    this.applyAnswer(c.sessionId, index);
+  }
+
+  // Records an answer for any player (real or bot) and locks the question if all are in.
+  private applyAnswer(sid: string, index?: number) {
+    if (this.state.phase !== "question") return;
+    const p = this.state.players.get(sid);
     const q = this.questions[this.state.qIndex];
-    if (!p || p.answered || !q) return;
+    if (!p || p.isHost || p.answered || !q) return;
     if (!Number.isInteger(index as number) || (index as number) < 0 || (index as number) >= q.options.length) return;
 
     const ms = Date.now() - this.qStart;
@@ -144,6 +215,7 @@ export class TriviaRoom extends Room<TriviaState> {
       delta = Math.round(BASE_POINTS * (0.5 + 0.5 * speed)); // 500..1000
       p.score += delta;
       p.correctCount++;
+      p.sumCorrectMs += ms;
       p.streak++;
       if (p.streak > p.bestStreak) p.bestStreak = p.streak;
     } else {
@@ -152,11 +224,11 @@ export class TriviaRoom extends Room<TriviaState> {
     }
     p.lastDelta = delta;
     p.lastCorrect = correct;
-    (this.answers.get(c.sessionId) || []).push({ q: this.state.qIndex, opt: index as number, ms, correct });
+    (this.answers.get(sid) || []).push({ q: this.state.qIndex, opt: index as number, ms, correct });
 
-    // everyone answered -> lock the question; host controls the reveal
+    // everyone (except the host) answered -> lock the question; host controls the reveal
     let allIn = true;
-    this.state.players.forEach((pl) => { if (pl.connected && !pl.answered) allIn = false; });
+    this.state.players.forEach((pl) => { if (pl.connected && !pl.isHost && !pl.answered) allIn = false; });
     if (allIn) this.closeQuestion();
   }
 
@@ -167,12 +239,15 @@ export class TriviaRoom extends Room<TriviaState> {
     this.gen++; // cancel the pending timeout
     const q = this.questions[this.state.qIndex];
     this.state.players.forEach((p, sid) => {
+      if (p.isHost) return; // host doesn't play, so no "missed" penalty
       if (!p.answered) {
         p.wrongCount++; p.streak = 0; p.lastDelta = 0; p.lastCorrect = false;
         (this.answers.get(sid) || []).push({ q: this.state.qIndex, opt: null, ms: q.timeLimitSec * 1000, correct: false });
       }
     });
     this.state.phase = "locked";
+    // In full simulation the room reveals + moves on by itself (no host needed).
+    if (this.sim) this.scheduleSim(() => { if (this.state.phase === "locked") this.revealAnswer(); }, SIM.next);
   }
 
   // Host reveals the correct answer + leaderboard.
@@ -180,6 +255,15 @@ export class TriviaRoom extends Room<TriviaState> {
     if (this.state.phase !== "locked") return;
     this.state.revealIndex = this.questions[this.state.qIndex].correct;
     this.state.phase = "reveal";
+    // In full simulation, linger on the leaderboard, then advance.
+    if (this.sim) this.scheduleSim(() => { if (this.state.phase === "reveal") this.advance(); }, SIM.reveal);
+  }
+
+  // Runs a callback on a sim timer that's cancelled if the sim is reset/stopped.
+  private scheduleSim(fn: () => void, ms: number) {
+    if (!this.sim) return;
+    const g = this.simGen;
+    this.clock.setTimeout(() => { if (this.sim && g === this.simGen) fn(); }, ms);
   }
 
   private advance() {
@@ -193,13 +277,17 @@ export class TriviaRoom extends Room<TriviaState> {
 
   private finish() {
     this.state.phase = "results";
+    this.sim = false;            // stop auto-advancing; results stay on screen
+    this.simGen++;
     this.broadcast("results", this.computeResults());
   }
 
   // ---------- results ----------
   private computeResults() {
-    const players = [...this.state.players.entries()].map(([sid, p]) => ({ sid, p }));
-    const name = (sid: string) => this.state.players.get(sid)?.name || "—";
+    // The host runs the game and does not compete.
+    const players = [...this.state.players.entries()]
+      .filter(([, p]) => !p.isHost)
+      .map(([sid, p]) => ({ sid, p }));
 
     // per-question option pick counts (for lone wolf / hive mind)
     const dist: Record<number, Record<number, number>> = {};
@@ -232,7 +320,12 @@ export class TriviaRoom extends Room<TriviaState> {
       };
     });
 
-    const leaderboard = [...stats].sort((a, b) => b.score - a.score)
+    // Ranking rule: most correct answers wins; ties broken by who was faster
+    // (lower average time on their correct answers); score is the final fallback.
+    const rankCmp = (a: typeof stats[number], b: typeof stats[number]) =>
+      (b.correct - a.correct) || (a.avgCorrectMs - b.avgCorrectMs) || (b.score - a.score);
+
+    const leaderboard = [...stats].sort(rankCmp)
       .map((s) => ({ name: s.name, score: s.score, correct: s.correct, wrong: s.wrong }));
 
     const best = <T,>(arr: T[], score: (t: T) => number, min = false): T | null => {
@@ -241,7 +334,7 @@ export class TriviaRoom extends Room<TriviaState> {
       return out;
     };
 
-    const champ = best(stats, (s) => s.score);
+    const champ = [...stats].sort(rankCmp)[0] || null;
     const fastest = best(stats.filter((s) => s.avgCorrectMs !== Infinity), (s) => s.avgCorrectMs, true);
     const spoon = best(stats, (s) => s.wrong);
     const loneWolf = best(stats.filter((s) => s.lone > 0), (s) => s.lone);
@@ -254,7 +347,7 @@ export class TriviaRoom extends Room<TriviaState> {
     const add = (key: string, emoji: string, label: string, s: any, detail: string) => {
       if (s) categories.push({ key, emoji, label, winner: s.name, detail });
     };
-    add("champion", "👑", "Champion", champ, champ ? `${champ.score} pts` : "");
+    add("champion", "👑", "Champion", champ, champ ? `${champ.correct} correct${champ.avgCorrectMs !== Infinity ? ` · avg ${sec(champ.avgCorrectMs)}` : ""}` : "");
     add("fastest", "⚡", "Fastest Finger", fastest, fastest ? `avg ${sec(fastest.avgCorrectMs)} on correct answers` : "");
     add("streak", "🔥", "Hot Streak", streak, streak ? `${streak.bestStreak} in a row` : "");
     add("spoon", "🥄", "Wooden Spoon", spoon, spoon ? `${spoon.wrong} wrong` : "");
@@ -268,6 +361,13 @@ export class TriviaRoom extends Room<TriviaState> {
 
   private resetToLobby() {
     this.gen++;
+    this.simGen++;
+    this.sim = false;
+    this.state.simulating = false;
+    // remove simulated players entirely
+    for (const sid of this.bots) { this.state.players.delete(sid); this.answers.delete(sid); }
+    this.bots.clear();
+    this.botSkill.clear();
     this.state.phase = "lobby";
     this.state.qIndex = 0;
     this.state.revealIndex = -1;
@@ -275,7 +375,7 @@ export class TriviaRoom extends Room<TriviaState> {
     this.state.qOptions.splice(0, this.state.qOptions.length);
     this.state.answeredCount = 0;
     this.state.players.forEach((p, sid) => {
-      p.score = 0; p.answered = false; p.correctCount = 0; p.wrongCount = 0;
+      p.score = 0; p.answered = false; p.correctCount = 0; p.sumCorrectMs = 0; p.wrongCount = 0;
       p.streak = 0; p.bestStreak = 0; p.lastDelta = 0; p.lastCorrect = false;
       this.answers.set(sid, []);
     });

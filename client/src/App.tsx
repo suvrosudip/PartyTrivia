@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Room } from "colyseus.js";
 import { QRCodeSVG } from "qrcode.react";
-import { createDisplay, joinByCode, reconnect, snapshot, Snap, PlayerSnap, Results, Quiz } from "./net";
+import { createDisplay, joinByCode, reconnect, snapshot, rankPlayers, avgCorrectMs, Snap, PlayerSnap, Results, Quiz } from "./net";
 import { narrate, stopNarration, primeNarration, testNarration, initNarration } from "./narrator";
+import { leaderQuip } from "./jokes";
 import { newQuiz, newQuestion } from "./quizzes";
 import * as store from "./store";
 import { Editor } from "./Editor";
-import { StringLights, HeroScene, Ambiance, Trophy, EmptyArt } from "./graphics";
+import { StringLights, HeroScene, Ambiance, Trophy, Podium, CrownMark, Sparkle, EmptyArt } from "./graphics";
 
 type Mode = "home" | "library" | "display" | "player";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -276,7 +277,7 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
   const joinUrl = `${location.origin}/?code=${snap.code}`;
   const hostJoinUrl = `${location.origin}/?code=${snap.code}&hk=${hostKey}`;
   const hostJoined = snap.players.some((p) => p.isHost);
-  const players = [...snap.players].sort((a, b) => b.score - a.score);
+  const players = rankPlayers(snap.players);
   const qImage = quiz?.questions?.[snap.qIndex]?.image;
   const [voiceOn, setVoiceOn] = useState(true);
   const lastSpoke = useRef("");
@@ -284,7 +285,16 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
     if (!voiceOn) return;
     const key = snap.phase + ":" + snap.qSeq;
     if (snap.phase === "question" && lastSpoke.current !== key) { lastSpoke.current = key; narrate(snap.qText); }
-    else if (snap.phase === "reveal" && snap.revealIndex >= 0 && lastSpoke.current !== key) { lastSpoke.current = key; narrate("The answer is " + snap.qOptions[snap.revealIndex]); }
+    else if (snap.phase === "reveal" && snap.revealIndex >= 0 && lastSpoke.current !== key) {
+      lastSpoke.current = key;
+      // 1) the answer, then 2) the current leader with a light joke.
+      const leader = players[0];
+      const second = players[1];
+      const tie = !!(leader && second && leader.correctCount === second.correctCount
+        && avgCorrectMs(leader) === avgCorrectMs(second) && leader.correctCount > 0);
+      const leaderName = leader && leader.correctCount > 0 ? leader.name : "";
+      narrate("The answer is " + snap.qOptions[snap.revealIndex] + ". " + leaderQuip(leaderName, tie));
+    }
   }, [snap.phase, snap.qSeq, snap.revealIndex, voiceOn]);
   function toggleVoice() { setVoiceOn((v) => { if (v) stopNarration(); return !v; }); }
 
@@ -296,14 +306,18 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           <div className="qr"><QRCodeSVG value={joinUrl} size={200} /></div>
           <div className="muted small">scan to join, or go to {location.host}</div>
           <div className="bigcode">{snap.code}</div>
-          <div className="chips center">{snap.players.map((p) => <span className="chip" key={p.id}>{p.name}{p.isHost ? " 👑" : ""}</span>)}</div>
+          <div className="chips center">{snap.players.map((p) => <span className={"chip" + (p.bot ? " botchip" : "")} key={p.id}>{p.name}{p.isHost ? " 👑" : ""}{p.bot ? <span className="botmark">bot</span> : ""}</span>)}</div>
           <div className="bar center">
-            <button className="btn solid" disabled={snap.players.length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>
+            <button className="btn solid" disabled={snap.players.filter((p) => !p.isHost).length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>
             <button className="btn ghost" onClick={toggleVoice}>🔊 Voice {voiceOn ? "on" : "off"}</button>
             <button className="btn ghost" onClick={testNarration}>Test</button>
             <button className="btn ghost" onClick={onLeave}>Close</button>
           </div>
-          <div className="muted small">{snap.players.length} joined</div>
+          <div className="bar center">
+            <button className="btn ghost" disabled={snap.qTotal < 1} onClick={() => send("simulate", { count: 5 })}>▶ Simulate a game</button>
+          </div>
+          <div className="muted small">{snap.players.filter((p) => !p.isHost).length} joined{snap.players.some((p) => p.isHost) ? " · host 👑" : ""}</div>
+          <div className="muted small">No one to play with? <b>Simulate</b> fills the room with bots and plays a full game by itself.</div>
         </div>
         {hostKey && (
           <div className="card center hostpanel">
@@ -327,12 +341,13 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           <Confetti />
           <Trophy />
           <div className="logo small">Results</div>
+          <Podium />
           <div className="podium">
             {results.podium.map((p, i) => (
               <div className={"pod pod" + i} key={i}>
                 <div className="podrank">{["🥇", "🥈", "🥉"][i]}</div>
                 <div className="podname">{p.name}</div>
-                <div className="podscore">{p.score}</div>
+                <div className="podscore">{p.correct} correct</div>
               </div>
             ))}
           </div>
@@ -363,7 +378,7 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
       <div className="card">
         <div className="row spread">
           <span className="pill">Question {snap.qIndex + 1} / {snap.qTotal}</span>
-          <span className="muted small">{snap.answeredCount} / {snap.players.length} answered</span>
+          <span className="muted small">{snap.simulating && <span className="simpill">◆ Simulation</span>} {snap.answeredCount} / {snap.players.filter((p) => !p.isHost).length} answered</span>
         </div>
         {snap.phase === "question" && <Timer seq={snap.qSeq} secs={snap.timeLimitSec} />}
         {locked && <div className="timesup">⏱ Time’s up — answers locked</div>}
@@ -380,41 +395,94 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           {locked && <button className="btn solid" onClick={() => send("next")}>Reveal answer →</button>}
           {reveal && <button className="btn solid" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>}
           <button className="btn ghost" onClick={toggleVoice}>🔊 {voiceOn ? "on" : "off"}</button>
+          {snap.simulating && <button className="btn ghost" onClick={() => send("reset")}>■ Stop sim</button>}
         </div>
       </div>
       {reveal && (
-        <div className="card">
-          <div className="lbl">Leaderboard</div>
-          {players.slice(0, 8).map((p, i) => (
-            <div className="lbrow" key={p.id}>
-              <span className="lbrank">{i + 1}</span>
-              <span className="lbname">{p.name}{p.lastCorrect ? <span className="tickgood"> +{p.lastDelta}</span> : <span className="tickbad"> ✗</span>}</span>
-              <span className="lbscore">{p.score}</span>
-            </div>
-          ))}
-        </div>
+        <LeaderboardCard players={players} />
       )}
     </Shell>
   );
 }
 
+// After each question: a spotlighted leader, a joke, then the ranked board.
+function LeaderboardCard({ players }: { players: PlayerSnap[] }) {
+  const [joke] = useState(() => {
+    const leader = players[0], second = players[1];
+    const tie = !!(leader && second && leader.correctCount === second.correctCount
+      && avgCorrectMs(leader) === avgCorrectMs(second) && leader.correctCount > 0);
+    return leaderQuip(leader && leader.correctCount > 0 ? leader.name : "", tie);
+  });
+  const leader = players[0];
+  return (
+    <div className="card lbcard">
+      <div className="lbl">🏆 Leaderboard</div>
+      {leader && leader.correctCount > 0 && (
+        <div className="leadspot">
+          <CrownMark />
+          <div className="leadwho">
+            <div className="leadname">{leader.name}</div>
+            <div className="leadstat">{leader.correctCount} correct{avgCorrectMs(leader) !== Infinity ? ` · ${(avgCorrectMs(leader) / 1000).toFixed(1)}s avg` : ""}</div>
+          </div>
+        </div>
+      )}
+      <div className="jokebubble">“{joke}”</div>
+      <div className="lblist">
+        {players.slice(0, 8).map((p, i) => (
+          <div className={"lbrow" + (i === 0 ? " lead" : "")} key={p.id} style={{ animationDelay: (i * 0.05).toFixed(2) + "s" }}>
+            <span className="lbrank">{["🥇", "🥈", "🥉"][i] || i + 1}</span>
+            <span className="lbname">{p.name}{p.lastCorrect ? <span className="tickgood"> ✓</span> : <span className="tickbad"> ✗</span>}</span>
+            <span className="lbcorrect">{p.correctCount} <span className="lbunit">correct</span></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================ PLAYER
 function Player({ snap, me, results, send, onLeave }: { snap: Snap; me?: PlayerSnap; results: Results | null; send: (t: string, p?: any) => void; onLeave: () => void }) {
-  const rank = me ? [...snap.players].sort((a, b) => b.score - a.score).findIndex((p) => p.id === me.id) + 1 : 0;
+  const rank = me ? rankPlayers(snap.players).findIndex((p) => p.id === me.id) + 1 : 0;
+  const nPlayers = snap.players.filter((p) => !p.isHost).length;
+  const board = rankPlayers(snap.players);
+
+  // The host runs the game and doesn't compete — show them game status, not answer buttons.
+  if (me?.isHost) {
+    return (
+      <Shell>
+        <div className="row spread">
+          <span className="pill">{snap.code}</span>
+          <span className="muted small">👑 {me.name} · hosting</span>
+        </div>
+        <HostBar snap={snap} send={send} />
+        {snap.phase === "lobby" && <div className="card center muted">You're the host 👑 — start the game when everyone's on the big screen. You steer; you don't play.</div>}
+        {(snap.phase === "question" || snap.phase === "locked") && (
+          <div className="card center">
+            <div className="lbl">Question {snap.qIndex + 1} / {snap.qTotal}</div>
+            <div className="qmid">{snap.qText}</div>
+            <div className="muted mt">{snap.answeredCount} / {nPlayers} answered{snap.phase === "locked" ? " · locked" : ""}</div>
+          </div>
+        )}
+        {snap.phase === "reveal" && (
+          <div className="card center">
+            <div className="big good">Answer: {snap.qOptions[snap.revealIndex]}</div>
+            {board[0] && board[0].correctCount > 0 && <div className="muted mt">🏆 Leading: <b>{board[0].name}</b> ({board[0].correctCount} correct)</div>}
+          </div>
+        )}
+        {snap.phase === "results" && <div className="card center"><div className="big">That's a wrap! 🎉</div><div className="muted">The big screen has the final results.</div><button className="btn ghost mt" onClick={onLeave}>Leave</button></div>}
+      </Shell>
+    );
+  }
 
   return (
     <Shell>
       <div className="row spread">
         <span className="pill">{snap.code}</span>
-        <span className="muted small">{me?.isHost ? "👑 " : ""}{me?.name} · {me?.score ?? 0} pts</span>
+        <span className="muted small">{me?.name} · {me?.correctCount ?? 0} correct</span>
       </div>
 
-      {me?.isHost && <HostBar snap={snap} send={send} />}
-
       {snap.phase === "lobby" && (
-        me?.isHost
-          ? <div className="card center muted">You're the host 👑 — start the game when everyone's on the big screen.</div>
-          : <div className="card center muted">You’re in! Watch the big screen — the host will start soon.</div>
+        <div className="card center muted">You’re in! Watch the big screen — the host will start soon.</div>
       )}
 
       {snap.phase === "question" && me && (
@@ -441,14 +509,14 @@ function Player({ snap, me, results, send, onLeave }: { snap: Snap; me?: PlayerS
           {me.lastCorrect
             ? <><div className="big good">Correct! +{me.lastDelta}</div>{me.streak > 1 && <div className="muted">🔥 {me.streak} in a row</div>}</>
             : <div className="big bad">{me.answered ? "Wrong" : "Too slow!"}</div>}
-          <div className="muted mt">You’re #{rank} of {snap.players.length} · {me.score} pts</div>
+          <div className="muted mt">You’re #{rank} of {nPlayers} · {me.correctCount} correct</div>
         </div>
       )}
 
       {snap.phase === "results" && (
         <div className="card center">
-          <div className="big">You finished #{rank} of {snap.players.length}</div>
-          <div className="muted">{me?.score ?? 0} points · {me?.correctCount ?? 0} correct</div>
+          <div className="big">You finished #{rank} of {nPlayers}</div>
+          <div className="muted">{me?.correctCount ?? 0} correct · {me?.score ?? 0} points</div>
           {results && results.categories.filter((c) => c.winner === me?.name).map((c) => (
             <div className="ribbon" key={c.key}>{c.emoji} {c.label}!</div>
           ))}
@@ -464,7 +532,7 @@ function HostBar({ snap, send }: { snap: Snap; send: (t: string, p?: any) => voi
   return (
     <div className="hostbar">
       <span className="hostbadge">👑 Host controls</span>
-      {snap.phase === "lobby" && <button className="btn solid sm" disabled={snap.players.length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>}
+      {snap.phase === "lobby" && <button className="btn solid sm" disabled={snap.players.filter((p) => !p.isHost).length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>}
       {snap.phase === "question" && <button className="btn ghost sm" onClick={() => send("next")}>End answers →</button>}
       {snap.phase === "locked" && <button className="btn solid sm" onClick={() => send("next")}>Reveal answer →</button>}
       {snap.phase === "reveal" && <button className="btn solid sm" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>}

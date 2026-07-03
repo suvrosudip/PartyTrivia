@@ -51,7 +51,7 @@ export function narrate(text: string) {
 
 export function testNarration() {
   primeNarration();
-  narrate("Welcome to Midnight Mafia. If you can hear this, narration is working on this screen.");
+  narrate("Welcome to Trivia Party. If you can hear this, narration is working on this screen.");
 }
 
 export function stopNarration() {
