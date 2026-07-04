@@ -3,7 +3,8 @@ import { Room } from "colyseus.js";
 import { QRCodeSVG } from "qrcode.react";
 import { createDisplay, joinByCode, reconnect, snapshot, rankPlayers, avgCorrectMs, Snap, PlayerSnap, Results, Quiz } from "./net";
 import { leaderQuip } from "./jokes";
-import { newQuiz, newQuestion } from "./quizzes";
+import { newQuiz, newQuestion, orderForGameplay } from "./quizzes";
+import { STARTER_QUESTIONS, starterQuiz } from "./starterPack";
 import * as store from "./store";
 import { Editor } from "./Editor";
 import { StringLights, HeroScene, Ambiance, Trophy, CrownMark, EmptyArt } from "./graphics";
@@ -111,8 +112,11 @@ function AppInner() {
   async function hostQuiz(quiz: Quiz) {
     setError("");
     if (!quiz.questions.length) { setError("Add at least one question first."); return; }
-    setHostedQuiz(quiz);
-    try { const room = await createDisplay(quiz); attach(room, true); setMode("display"); }
+    // Randomize the running order, alternating text and image questions where possible.
+    // The display's local copy and the server copy share the SAME order so image indices line up.
+    const ordered: Quiz = { ...quiz, questions: orderForGameplay(quiz.questions) };
+    setHostedQuiz(ordered);
+    try { const room = await createDisplay(ordered); attach(room, true); setMode("display"); }
     catch { setError("Could not open a room. Is the server running?"); }
   }
   async function doJoin() {
@@ -204,6 +208,17 @@ function Library({ onHost, onBack, error }: { onHost: (q: Quiz) => void; onBack:
     const q = newQuiz(); q.questions = [newQuestion()];
     await persist(q); setEditingId(q.id);
   }
+  // Add the fact-checked starter pack as a brand-new quiz.
+  async function addStarterPack() {
+    const q = starterQuiz();
+    await persist(q); setEditingId(q.id);
+  }
+  // Append the starter-pack questions to an existing quiz the user already has.
+  async function appendStarterPack(target: Quiz) {
+    if (!confirm(`Add ${STARTER_QUESTIONS.length} starter questions to “${target.title}”?`)) return;
+    const merged: Quiz = { ...target, questions: [...target.questions, ...STARTER_QUESTIONS.map((x) => ({ ...x }))] };
+    await persist(merged);
+  }
   async function remove(id: string) {
     if (!confirm("Delete this quiz?")) return;
     try { await store.removeQuiz(id); setQuizzes((qs) => qs.filter((q) => q.id !== id)); }
@@ -272,12 +287,16 @@ function Library({ onHost, onBack, error }: { onHost: (q: Quiz) => void; onBack:
           <div className="qrow-actions">
             <button className="btn solid sm" onClick={() => onHost(q)}>Host</button>
             <button className="btn ghost sm" onClick={() => setEditingId(q.id)}>Edit</button>
+            <button className="btn ghost sm" onClick={() => appendStarterPack(q)}>+ Starter pack</button>
             <button className="btn ghost sm" onClick={() => exportQuiz(q)}>Export</button>
             <button className="btn ghost sm danger" onClick={() => remove(q.id)}>Delete</button>
           </div>
         </div>
       ))}
-      <button className="btn solid full" onClick={create}>+ New quiz</button>
+      <div className="bar">
+        <button className="btn solid full" onClick={create}>+ New quiz</button>
+        <button className="btn ghost full" onClick={addStarterPack}>✨ Add starter pack ({STARTER_QUESTIONS.length} Qs)</button>
+      </div>
     </Shell>
   );
 }
