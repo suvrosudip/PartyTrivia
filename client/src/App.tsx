@@ -2,17 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { Room } from "colyseus.js";
 import { QRCodeSVG } from "qrcode.react";
 import { createDisplay, joinByCode, reconnect, snapshot, rankPlayers, avgCorrectMs, Snap, PlayerSnap, Results, Quiz } from "./net";
-import { narrate, stopNarration, primeNarration, testNarration, initNarration } from "./narrator";
 import { leaderQuip } from "./jokes";
 import { newQuiz, newQuestion } from "./quizzes";
 import * as store from "./store";
 import { Editor } from "./Editor";
 import { StringLights, HeroScene, Ambiance, Trophy, CrownMark, EmptyArt } from "./graphics";
+import { BackgroundMusic } from "./music";
 
 type Mode = "home" | "library" | "display" | "player";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
 export default function App() {
+  return (
+    <>
+      <BackgroundMusic />
+      <AppInner />
+    </>
+  );
+}
+
+function AppInner() {
   const [mode, setMode] = useState<Mode>("home");
   const [snap, setSnap] = useState<Snap | null>(null);
   const [results, setResults] = useState<Results | null>(null);
@@ -102,9 +111,8 @@ export default function App() {
   async function hostQuiz(quiz: Quiz) {
     setError("");
     if (!quiz.questions.length) { setError("Add at least one question first."); return; }
-    primeNarration(); // the tap unlocks audio on strict browsers
     setHostedQuiz(quiz);
-    try { const room = await createDisplay(quiz); attach(room, true); setMode("display"); initNarration(); }
+    try { const room = await createDisplay(quiz); attach(room, true); setMode("display"); }
     catch { setError("Could not open a room. Is the server running?"); }
   }
   async function doJoin() {
@@ -117,7 +125,6 @@ export default function App() {
   function send(type: string, payload?: any) { roomRef.current?.send(type, payload); }
   function leave() {
     try { localStorage.removeItem("pt"); } catch {}
-    stopNarration();
     roomRef.current?.leave(true); roomRef.current = null;
     setSnap(null); setResults(null); setHostedQuiz(null); setMode("home"); setError("");
   }
@@ -282,30 +289,6 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
   const hostJoined = snap.players.some((p) => p.isHost);
   const players = rankPlayers(snap.players);
   const qImage = quiz?.questions?.[snap.qIndex]?.image;
-  const [voiceOn, setVoiceOn] = useState(true);
-  const lastSpoke = useRef("");
-  useEffect(() => {
-    if (!voiceOn) return;
-    const key = snap.phase + ":" + snap.qSeq;
-    if (snap.phase === "question" && lastSpoke.current !== key) { lastSpoke.current = key; narrate(snap.qText); }
-    else if (snap.phase === "reveal" && snap.revealIndex >= 0 && lastSpoke.current !== key) {
-      lastSpoke.current = key;
-      // Leaderboard (and its joke) only surfaces every 3rd question, or on the last one.
-      const showBoard = (snap.qIndex + 1) % 3 === 0 || snap.qIndex + 1 >= snap.qTotal;
-      const answerLine = "The answer is " + snap.qOptions[snap.revealIndex] + ".";
-      if (showBoard) {
-        const leader = players[0];
-        const second = players[1];
-        const tie = !!(leader && second && leader.correctCount === second.correctCount
-          && avgCorrectMs(leader) === avgCorrectMs(second) && leader.correctCount > 0);
-        const leaderName = leader && leader.correctCount > 0 ? leader.name : "";
-        narrate(answerLine + " " + leaderQuip(leaderName, tie));
-      } else {
-        narrate(answerLine);
-      }
-    }
-  }, [snap.phase, snap.qSeq, snap.revealIndex, voiceOn]);
-  function toggleVoice() { setVoiceOn((v) => { if (v) stopNarration(); return !v; }); }
 
   if (snap.phase === "lobby") {
     return (
@@ -318,8 +301,6 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           <div className="chips center">{snap.players.map((p) => <span className={"chip" + (p.bot ? " botchip" : "")} key={p.id}>{p.name}{p.isHost ? " 👑" : ""}{p.bot ? <span className="botmark">bot</span> : ""}</span>)}</div>
           <div className="bar center">
             <button className="btn solid" disabled={snap.players.filter((p) => !p.isHost).length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>
-            <button className="btn ghost" onClick={toggleVoice}>🔊 Voice {voiceOn ? "on" : "off"}</button>
-            <button className="btn ghost" onClick={testNarration}>Test</button>
             <button className="btn ghost" onClick={onLeave}>Close</button>
           </div>
           <div className="bar center">
@@ -402,7 +383,6 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           {snap.phase === "question" && <button className="btn ghost" onClick={() => send("next")}>End answers →</button>}
           {locked && <button className="btn solid" onClick={() => send("next")}>Reveal answer →</button>}
           {reveal && <button className="btn solid" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>}
-          <button className="btn ghost" onClick={toggleVoice}>🔊 {voiceOn ? "on" : "off"}</button>
           {snap.simulating && <button className="btn ghost" onClick={() => send("reset")}>■ Stop sim</button>}
         </div>
       </div>

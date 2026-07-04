@@ -39,6 +39,14 @@ export function Editor({ quiz, onPersist, onClose, onHost }: {
   function setTitle(title: string) { update({ ...q, title }); }
   function addQuestion() { update({ ...q, questions: [...q.questions, newQuestion()] }); }
   function removeQuestion(i: number) { update({ ...q, questions: q.questions.filter((_, x) => x !== i) }); }
+  // Reorder a question by swapping it with its neighbour (works on desktop + touch).
+  function moveQuestion(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= q.questions.length) return;
+    const next = q.questions.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    update({ ...q, questions: next });
+  }
   function patchQ(i: number, patch: any) {
     update({ ...q, questions: q.questions.map((qq, x) => (x === i ? { ...qq, ...patch } : qq)) });
   }
@@ -72,7 +80,11 @@ export function Editor({ quiz, onPersist, onClose, onHost }: {
         <div className="card qedit" key={qi}>
           <div className="row spread">
             <span className="pill">Q{qi + 1}</span>
-            <button className="btn ghost sm danger" onClick={() => removeQuestion(qi)}>Remove</button>
+            <div className="qedit-actions">
+              <button className="btn ghost sm iconbtn" title="Move up" disabled={qi === 0} onClick={() => moveQuestion(qi, -1)}>↑</button>
+              <button className="btn ghost sm iconbtn" title="Move down" disabled={qi === q.questions.length - 1} onClick={() => moveQuestion(qi, 1)}>↓</button>
+              <button className="btn ghost sm danger" onClick={() => removeQuestion(qi)}>Remove</button>
+            </div>
           </div>
           <textarea className="inp area" placeholder="Question text… (e.g. Whose baby photo is this?)" value={qq.text} rows={2}
             onChange={(e) => patchQ(qi, { text: e.target.value })} />

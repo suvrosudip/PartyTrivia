@@ -1,4 +1,4 @@
-// Light, friendly quips the narrator reads out about whoever's leading the
+// Light, friendly quips shown on screen about whoever's leading the
 // board after each question. Kept PG and good-natured — this is a party.
 
 const LEADER_JOKES: ((n: string) => string)[] = [

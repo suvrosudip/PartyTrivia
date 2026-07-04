@@ -337,3 +337,20 @@ body[data-mode="display"] .trophy { width:clamp(70px,12vh,110px); height:auto; }
 @media (min-width:1000px) and (min-height:560px) {
   body[data-mode="display"] .wrap.wide { max-width:min(1180px, 96vw); }
 }
+
+/* ---------- editor: question reorder controls ---------- */
+.qedit-actions { display:flex; align-items:center; gap:6px; }
+.iconbtn { min-width:34px; padding:6px 9px; font-weight:800; line-height:1; }
+.iconbtn:disabled { opacity:.35; cursor:not-allowed; }
+
+/* ---------- background-music toggle (floating) ---------- */
+.musictoggle {
+  position:fixed; z-index:60; right:14px; bottom:14px;
+  width:46px; height:46px; border-radius:50%; border:1px solid var(--line);
+  background:var(--surface); color:var(--ink); font-size:20px; line-height:1; cursor:pointer;
+  box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center;
+  transition:transform .12s, filter .2s;
+}
+.musictoggle:hover { filter:brightness(1.04); transform:scale(1.06); }
+.musictoggle:active { transform:scale(.96); }
+@media (prefers-reduced-motion: reduce) { .musictoggle { transition:none; } }
