@@ -291,35 +291,42 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
   const qImage = quiz?.questions?.[snap.qIndex]?.image;
 
   if (snap.phase === "lobby") {
+    const realPlayers = snap.players.filter((p) => !p.isHost);
     return (
       <Shell wide>
-        <div className="card center">
-          <div className="lbl">{snap.quizTitle}</div>
-          <div className="qr"><QRCodeSVG value={joinUrl} size={200} /></div>
-          <div className="muted small">scan to join, or go to {location.host}</div>
-          <div className="bigcode">{snap.code}</div>
+        <div className="card lobbycard">
+          <div className="lbl center">{snap.quizTitle}</div>
+          <div className="joinrow">
+            {/* players join */}
+            <div className="joincol">
+              <div className="joinhdr">Players — scan to join</div>
+              <div className="qr"><QRCodeSVG value={joinUrl} size={190} /></div>
+              <div className="bigcode">{snap.code}</div>
+              <div className="muted small">or go to {location.host}</div>
+            </div>
+            {/* host join (only when a host key exists and no host has joined yet) */}
+            {hostKey && (
+              <div className="joincol hostcol">
+                <div className="joinhdr">👑 Host — scan to control</div>
+                {hostJoined
+                  ? <div className="hostjoined">✓ Host connected<div className="muted small mt">Start &amp; step the game from their phone.</div></div>
+                  : <>
+                      <div className="hostqr"><QRCodeSVG value={hostJoinUrl} size={150} /></div>
+                      <div className="muted small">Private code — run the game &amp; play along.</div>
+                    </>}
+              </div>
+            )}
+          </div>
+
           <div className="chips center">{snap.players.map((p) => <span className={"chip" + (p.bot ? " botchip" : "")} key={p.id}>{p.name}{p.isHost ? " 👑" : ""}{p.bot ? <span className="botmark">bot</span> : ""}</span>)}</div>
+
           <div className="bar center">
-            <button className="btn solid" disabled={snap.players.filter((p) => !p.isHost).length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>
+            <button className="btn solid" disabled={realPlayers.length < 1 || snap.qTotal < 1} onClick={() => send("start")}>Start ({snap.qTotal} Qs)</button>
+            <button className="btn ghost" disabled={snap.qTotal < 1} onClick={() => send("simulate", { count: 5 })}>▶ Simulate</button>
             <button className="btn ghost" onClick={onLeave}>Close</button>
           </div>
-          <div className="bar center">
-            <button className="btn ghost" disabled={snap.qTotal < 1} onClick={() => send("simulate", { count: 5 })}>▶ Simulate a game</button>
-          </div>
-          <div className="muted small">{snap.players.filter((p) => !p.isHost).length} joined{snap.players.some((p) => p.isHost) ? " · host 👑" : ""}</div>
-          <div className="muted small">No one to play with? <b>Simulate</b> fills the room with bots and plays a full game by itself.</div>
+          <div className="muted small center">{realPlayers.length} joined{snap.players.some((p) => p.isHost) ? " · host 👑" : ""} · {snap.qTotal} questions</div>
         </div>
-        {hostKey && (
-          <div className="card center hostpanel">
-            <div className="lbl">👑 Run it from your phone</div>
-            {hostJoined
-              ? <div className="muted small">Host connected — the game can be started and stepped from their phone.</div>
-              : <>
-                  <div className="hostqr"><QRCodeSVG value={hostJoinUrl} size={110} /></div>
-                  <div className="muted small">Host: scan this <b>private</b> code to get Start / Reveal / Next on your phone — you can play along too. Everyone else uses the big code above.</div>
-                </>}
-          </div>
-        )}
       </Shell>
     );
   }
@@ -362,6 +369,25 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
   // question / locked / reveal
   const reveal = snap.phase === "reveal";
   const locked = snap.phase === "locked";
+  // Every 3rd reveal (and the final one) we clear the question away and show a
+  // full-screen leaderboard instead, so it fits the TV cleanly.
+  const showBoard = reveal && ((snap.qIndex + 1) % 3 === 0 || snap.qIndex + 1 >= snap.qTotal);
+  const lastQ = snap.qIndex + 1 >= snap.qTotal;
+
+  if (showBoard) {
+    return (
+      <Shell wide>
+        <LeaderboardCard
+          players={players}
+          answer={snap.qOptions[snap.revealIndex]}
+          onNext={() => send("next")}
+          nextLabel={lastQ ? "See results →" : "Next question →"}
+          stopSim={snap.simulating ? () => send("reset") : undefined}
+        />
+      </Shell>
+    );
+  }
+
   return (
     <Shell wide>
       <div className="card">
@@ -382,19 +408,18 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
         <div className="bar center">
           {snap.phase === "question" && <button className="btn ghost" onClick={() => send("next")}>End answers →</button>}
           {locked && <button className="btn solid" onClick={() => send("next")}>Reveal answer →</button>}
-          {reveal && <button className="btn solid" onClick={() => send("next")}>{snap.qIndex + 1 >= snap.qTotal ? "See results →" : "Next question →"}</button>}
+          {reveal && <button className="btn solid" onClick={() => send("next")}>{lastQ ? "See results →" : "Next question →"}</button>}
           {snap.simulating && <button className="btn ghost" onClick={() => send("reset")}>■ Stop sim</button>}
         </div>
       </div>
-      {reveal && ((snap.qIndex + 1) % 3 === 0 || snap.qIndex + 1 >= snap.qTotal) && (
-        <LeaderboardCard players={players} />
-      )}
     </Shell>
   );
 }
 
-// After each question: a spotlighted leader, a joke, then the ranked board.
-function LeaderboardCard({ players }: { players: PlayerSnap[] }) {
+// After every 3rd question: the answer, a spotlighted leader, a joke, the ranked board.
+function LeaderboardCard({ players, answer, onNext, nextLabel, stopSim }: {
+  players: PlayerSnap[]; answer?: string; onNext?: () => void; nextLabel?: string; stopSim?: () => void;
+}) {
   const [joke] = useState(() => {
     const leader = players[0], second = players[1];
     const tie = !!(leader && second && leader.correctCount === second.correctCount
@@ -404,7 +429,10 @@ function LeaderboardCard({ players }: { players: PlayerSnap[] }) {
   const leader = players[0];
   return (
     <div className="card lbcard">
-      <div className="lbl">🏆 Leaderboard</div>
+      <div className="row spread">
+        <div className="lbl">🏆 Leaderboard</div>
+        {answer && <span className="ansstrip">✓ Answer: <b>{answer}</b></span>}
+      </div>
       {leader && leader.correctCount > 0 && (
         <div className="leadspot">
           <CrownMark />
@@ -424,6 +452,12 @@ function LeaderboardCard({ players }: { players: PlayerSnap[] }) {
           </div>
         ))}
       </div>
+      {(onNext || stopSim) && (
+        <div className="bar center mt">
+          {onNext && <button className="btn solid" onClick={onNext}>{nextLabel}</button>}
+          {stopSim && <button className="btn ghost" onClick={stopSim}>■ Stop sim</button>}
+        </div>
+      )}
     </div>
   );
 }

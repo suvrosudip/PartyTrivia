@@ -354,3 +354,31 @@ body[data-mode="display"] .trophy { width:clamp(70px,12vh,110px); height:auto; }
 .musictoggle:hover { filter:brightness(1.04); transform:scale(1.06); }
 .musictoggle:active { transform:scale(.96); }
 @media (prefers-reduced-motion: reduce) { .musictoggle { transition:none; } }
+
+/* ============================================================
+   Lobby — players + host join side by side
+   ============================================================ */
+.lobbycard { text-align:center; }
+.lbl.center { text-align:center; }
+.joinrow { display:flex; gap:clamp(16px,3vw,40px); justify-content:center; align-items:stretch; flex-wrap:wrap; margin:clamp(6px,1.5vh,14px) 0; }
+.joincol { display:flex; flex-direction:column; align-items:center; gap:6px; flex:0 1 auto; }
+.joincol.hostcol { border-left:1px dashed var(--line); padding-left:clamp(16px,3vw,40px); }
+.joinhdr { font-family:var(--display); font-weight:800; font-size:clamp(12px,1.7vh,15px); letter-spacing:.02em; color:var(--sub); text-transform:uppercase; }
+.hostjoined { font-family:var(--display); font-weight:800; color:var(--good); font-size:clamp(16px,2.4vh,20px); padding:clamp(20px,5vh,50px) 0; }
+/* on narrow screens the columns stack, and the divider becomes a top border */
+@media (max-width:620px) {
+  .joincol.hostcol { border-left:none; border-top:1px dashed var(--line); padding-left:0; padding-top:16px; }
+}
+
+/* answer strip on the leaderboard card */
+.ansstrip { font-weight:700; font-size:clamp(13px,1.9vh,16px); color:var(--good); }
+.ansstrip b { color:var(--ink); }
+
+/* ============================================================
+   Display fit tweaks for the side-by-side lobby + board-only reveal
+   ============================================================ */
+body[data-mode="display"] .joinrow .qr svg { width:clamp(130px,26vh,210px) !important; height:auto !important; }
+body[data-mode="display"] .joinrow .hostqr svg { width:clamp(110px,20vh,160px) !important; height:auto !important; }
+body[data-mode="display"] .lobbycard .chips { max-height:16vh; }
+/* the board-only reveal gets more room now that the question is gone */
+body[data-mode="display"] .lbcard .lblist { max-height:44vh; }

@@ -99,7 +99,7 @@ export class TriviaRoom extends Room<TriviaState> {
         .map((o: any) => String(o || "").slice(0, 80).trim()).filter(Boolean).slice(0, 6);
       let correct = Number(raw?.correct);
       if (!Number.isInteger(correct) || correct < 0 || correct >= options.length) correct = 0;
-      const timeLimitSec = Math.max(5, Math.min(120, Number(raw?.timeLimitSec) || 20));
+      const timeLimitSec = Math.max(5, Math.min(120, Number(raw?.timeLimitSec) || 12));
       if (text && options.length >= 2) qs.push({ text, options, correct, timeLimitSec });
     }
     this.questions = qs;

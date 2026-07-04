@@ -107,7 +107,7 @@ export function Editor({ quiz, onPersist, onClose, onHost }: {
             {qq.options.length < 6 ? <button className="btn ghost sm" onClick={() => addOption(qi)}>+ Option</button> : <span />}
             <label className="muted small">Time
               <select className="seln" value={qq.timeLimitSec} onChange={(e) => patchQ(qi, { timeLimitSec: Number(e.target.value) })}>
-                {[10, 15, 20, 30, 45, 60].map((s) => <option key={s} value={s}>{s}s</option>)}
+                {[8, 10, 12, 15, 20, 30, 45, 60].map((s) => <option key={s} value={s}>{s}s</option>)}
               </select>
             </label>
           </div>

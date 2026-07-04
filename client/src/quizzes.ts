@@ -24,5 +24,5 @@ export function newQuiz(): Quiz {
   return { id: "q_" + Math.random().toString(36).slice(2, 9), title: "Untitled quiz", questions: [] };
 }
 export function newQuestion() {
-  return { text: "", options: ["", ""], correct: 0, timeLimitSec: 20 };
+  return { text: "", options: ["", ""], correct: 0, timeLimitSec: 12 };
 }
