@@ -170,17 +170,20 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
 .tickgood { color:var(--good); font-weight:800; } .tickbad { color:var(--bad); font-weight:800; }
 
 /* ---------- results ---------- */
-.podium { display:flex; justify-content:center; align-items:flex-end; gap:12px; margin:18px 0 8px; }
-.pod { border-radius:16px 16px 0 0; padding:16px 12px; width:30%; text-align:center; color:#3a2600; box-shadow:var(--shadow-sm); }
-.pod0 { background:linear-gradient(180deg,#ffe69a,var(--gold)); padding-top:34px; }
-.pod1 { background:linear-gradient(180deg,#eef1f6,#c4ccda); padding-top:24px; }
-.pod2 { background:linear-gradient(180deg,#ffd6ad,#f3a86a); padding-top:16px; }
-.podrank { font-size:30px; } .podname { font-weight:800; margin-top:4px; }
-.podscore { font-family:var(--display); font-weight:800; }
-.cats { display:grid; grid-template-columns:1fr 1fr; gap:13px; margin:18px 0; }
-.cat { background:var(--surface-2); border-radius:14px; padding:15px; text-align:center; }
-.catemoji { font-size:30px; } .catlabel { font-family:var(--display); font-weight:700; color:var(--zap); font-size:12px; text-transform:uppercase; letter-spacing:.08em; margin-top:2px; }
-.catwinner { font-weight:800; font-size:18px; margin-top:3px; } .catdetail { color:var(--sub); font-size:12px; }
+.ranklist { list-style:none; margin:16px auto 8px; padding:0; max-width:520px; text-align:left; }
+.rankrow { display:flex; align-items:center; gap:14px; padding:clamp(9px,1.5vh,13px) 16px; border-radius:14px; background:var(--surface-2);
+  margin-bottom:8px; box-shadow:var(--shadow-sm); animation:lbIn .4s cubic-bezier(.2,.8,.3,1) both; }
+.rankrow.top0 { background:linear-gradient(90deg, rgba(255,200,58,.22), rgba(255,200,58,.05)); box-shadow:0 6px 18px -10px rgba(255,176,31,.5); }
+.rankrow.top1 { background:linear-gradient(90deg, rgba(196,204,218,.28), rgba(196,204,218,.06)); }
+.rankrow.top2 { background:linear-gradient(90deg, rgba(243,168,106,.24), rgba(243,168,106,.05)); }
+.rankpos { font-family:var(--display); font-weight:800; font-size:clamp(18px,2.6vh,24px); min-width:38px; text-align:center; }
+.rankname { flex:1; font-weight:800; font-size:clamp(15px,2vh,19px); }
+.rankscore { font-family:var(--display); font-weight:800; font-size:clamp(16px,2.2vh,20px); color:var(--gold); }
+.rankunit { font-family:var(--ui); font-weight:600; font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.05em; }
+.cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:clamp(8px,1.4vh,13px); margin:clamp(12px,2vh,18px) 0; }
+.cat { background:var(--surface-2); border-radius:14px; padding:clamp(10px,1.6vh,15px); text-align:center; }
+.catemoji { font-size:clamp(22px,3.2vh,30px); } .catlabel { font-family:var(--display); font-weight:700; color:var(--zap); font-size:12px; text-transform:uppercase; letter-spacing:.08em; margin-top:2px; }
+.catwinner { font-weight:800; font-size:clamp(15px,2vh,18px); margin-top:3px; } .catdetail { color:var(--sub); font-size:12px; }
 .confetti { position:absolute; inset:0; overflow:hidden; pointer-events:none; border-radius:var(--r-lg); }
 .confetti i { position:absolute; top:-12px; width:9px; height:14px; border-radius:2px; opacity:.9; animation:fall linear infinite; }
 @keyframes fall { to { transform:translateY(140%) rotate(540deg); } }
@@ -281,3 +284,56 @@ body { font-family:var(--ui); color:var(--ink); -webkit-font-smoothing:antialias
   animation:simGlow 2s ease-in-out infinite; }
 @keyframes simGlow { 0%,100%{ box-shadow:0 0 0 0 rgba(139,92,255,.5); } 50%{ box-shadow:0 0 12px 2px rgba(139,92,255,.5); } }
 @media (prefers-reduced-motion: reduce) { .simpill { animation:none !important; } }
+
+/* ============================================================
+   FIT-TO-SCREEN for the big display (TV). Player phones (data-mode
+   "player"/"home") keep normal scrolling; only the display is locked
+   to the viewport so the whole screen fits without scrolling.
+   ============================================================ */
+body[data-mode="display"], body[data-mode="display"] #root { height:100dvh; overflow:hidden; }
+body[data-mode="display"] .bg {
+  height:100dvh; min-height:0; overflow:hidden;
+  padding:clamp(8px,1.6vh,18px) clamp(10px,2vw,20px);
+  align-items:center;
+}
+/* the wrap becomes a vertical flex column that never exceeds the screen */
+body[data-mode="display"] .wrap {
+  max-height:100%;
+  display:flex; flex-direction:column; justify-content:center;
+  gap:clamp(6px,1vh,12px);
+}
+/* cards shrink their own margins/padding on the display */
+body[data-mode="display"] .card {
+  margin:0; padding:clamp(12px,2vh,22px);
+  max-height:100%; overflow:auto;
+}
+/* let a card that holds a scrolling list flex, but keep everything on one screen */
+body[data-mode="display"] .lbcard,
+body[data-mode="display"] .card.center { overflow:hidden; }
+
+/* --- lobby: shrink the QR + code so it never pushes past the fold --- */
+body[data-mode="display"] .qr svg { width:clamp(120px,22vh,200px) !important; height:auto !important; }
+body[data-mode="display"] .hostqr svg { width:clamp(72px,12vh,110px) !important; height:auto !important; }
+body[data-mode="display"] .bigcode { font-size:clamp(38px,8vh,72px); margin:clamp(4px,1vh,10px) 0; }
+body[data-mode="display"] .chips { max-height:22vh; overflow:auto; }
+
+/* --- question screen: options + text scale to fit --- */
+body[data-mode="display"] .qbig { font-size:clamp(20px,3.6vh,36px); margin:clamp(6px,1.2vh,14px) 0; }
+body[data-mode="display"] .optgrid { gap:clamp(8px,1.5vh,13px); }
+body[data-mode="display"] .opt { font-size:clamp(15px,2.4vh,22px); padding:clamp(10px,2vh,20px); }
+body[data-mode="display"] .qimg { max-height:30vh; }
+body[data-mode="display"] .timer { margin:clamp(8px,1.4vh,14px) 0; }
+
+/* --- reveal leaderboard: cap the list height, let it scroll internally --- */
+body[data-mode="display"] .lblist { max-height:30vh; overflow:auto; }
+
+/* --- results: keep the ranked list + categories inside one screen --- */
+body[data-mode="display"] .ranklist { max-height:34vh; overflow:auto; margin:clamp(8px,1.5vh,16px) auto; }
+body[data-mode="display"] .cats { max-height:30vh; overflow:auto; }
+body[data-mode="display"] .logo.small { font-size:clamp(20px,3.4vh,26px); }
+body[data-mode="display"] .trophy { width:clamp(70px,12vh,110px); height:auto; }
+
+/* two-column layout for the reveal so the board sits beside the answers on wide TVs */
+@media (min-width:1000px) and (min-height:560px) {
+  body[data-mode="display"] .wrap.wide { max-width:min(1180px, 96vw); }
+}

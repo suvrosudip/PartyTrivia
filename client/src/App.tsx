@@ -7,7 +7,7 @@ import { leaderQuip } from "./jokes";
 import { newQuiz, newQuestion } from "./quizzes";
 import * as store from "./store";
 import { Editor } from "./Editor";
-import { StringLights, HeroScene, Ambiance, Trophy, Podium, CrownMark, Sparkle, EmptyArt } from "./graphics";
+import { StringLights, HeroScene, Ambiance, Trophy, CrownMark, EmptyArt } from "./graphics";
 
 type Mode = "home" | "library" | "display" | "player";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -27,6 +27,9 @@ export default function App() {
   const roomRef = useRef<Room | null>(null);
   const modeRef = useRef<Mode>("home");
   useEffect(() => { modeRef.current = mode; }, [mode]);
+  // Tag the body so CSS can make the big-screen (display) fit the TV without scrolling,
+  // while phones keep their normal scrolling behaviour.
+  useEffect(() => { document.body.dataset.mode = mode; return () => { delete document.body.dataset.mode; }; }, [mode]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -287,13 +290,19 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
     if (snap.phase === "question" && lastSpoke.current !== key) { lastSpoke.current = key; narrate(snap.qText); }
     else if (snap.phase === "reveal" && snap.revealIndex >= 0 && lastSpoke.current !== key) {
       lastSpoke.current = key;
-      // 1) the answer, then 2) the current leader with a light joke.
-      const leader = players[0];
-      const second = players[1];
-      const tie = !!(leader && second && leader.correctCount === second.correctCount
-        && avgCorrectMs(leader) === avgCorrectMs(second) && leader.correctCount > 0);
-      const leaderName = leader && leader.correctCount > 0 ? leader.name : "";
-      narrate("The answer is " + snap.qOptions[snap.revealIndex] + ". " + leaderQuip(leaderName, tie));
+      // Leaderboard (and its joke) only surfaces every 3rd question, or on the last one.
+      const showBoard = (snap.qIndex + 1) % 3 === 0 || snap.qIndex + 1 >= snap.qTotal;
+      const answerLine = "The answer is " + snap.qOptions[snap.revealIndex] + ".";
+      if (showBoard) {
+        const leader = players[0];
+        const second = players[1];
+        const tie = !!(leader && second && leader.correctCount === second.correctCount
+          && avgCorrectMs(leader) === avgCorrectMs(second) && leader.correctCount > 0);
+        const leaderName = leader && leader.correctCount > 0 ? leader.name : "";
+        narrate(answerLine + " " + leaderQuip(leaderName, tie));
+      } else {
+        narrate(answerLine);
+      }
     }
   }, [snap.phase, snap.qSeq, snap.revealIndex, voiceOn]);
   function toggleVoice() { setVoiceOn((v) => { if (v) stopNarration(); return !v; }); }
@@ -341,16 +350,15 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           <Confetti />
           <Trophy />
           <div className="logo small">Results</div>
-          <Podium />
-          <div className="podium">
-            {results.podium.map((p, i) => (
-              <div className={"pod pod" + i} key={i}>
-                <div className="podrank">{["🥇", "🥈", "🥉"][i]}</div>
-                <div className="podname">{p.name}</div>
-                <div className="podscore">{p.correct} correct</div>
-              </div>
+          <ol className="ranklist">
+            {results.leaderboard.map((p, i) => (
+              <li className={"rankrow" + (i < 3 ? " top" + i : "")} key={i}>
+                <span className="rankpos">{["🥇", "🥈", "🥉"][i] || (i + 1)}</span>
+                <span className="rankname">{p.name}</span>
+                <span className="rankscore">{p.correct} <span className="rankunit">correct</span></span>
+              </li>
             ))}
-          </div>
+          </ol>
           <div className="cats">
             {results.categories.map((c) => (
               <div className="cat" key={c.key}>
@@ -398,7 +406,7 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
           {snap.simulating && <button className="btn ghost" onClick={() => send("reset")}>■ Stop sim</button>}
         </div>
       </div>
-      {reveal && (
+      {reveal && ((snap.qIndex + 1) % 3 === 0 || snap.qIndex + 1 >= snap.qTotal) && (
         <LeaderboardCard players={players} />
       )}
     </Shell>
