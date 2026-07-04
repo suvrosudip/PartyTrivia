@@ -14,12 +14,7 @@ type Mode = "home" | "library" | "display" | "player";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
 export default function App() {
-  return (
-    <>
-      <BackgroundMusic />
-      <AppInner />
-    </>
-  );
+  return <AppInner />;
 }
 
 function AppInner() {
@@ -165,7 +160,10 @@ function AppInner() {
   // ---------------- DISPLAY ----------------
   if (mode === "display") {
     if (!snap) return <Shell><div className="card center">Opening room…</div></Shell>;
-    return <Display snap={snap} results={results} quiz={hostedQuiz} hostKey={displayHostKey} send={send} onLeave={leave} />;
+    return <>
+      <BackgroundMusic />
+      <Display snap={snap} results={results} quiz={hostedQuiz} hostKey={displayHostKey} send={send} onLeave={leave} />
+    </>;
   }
 
   // ---------------- PLAYER ----------------
@@ -308,6 +306,8 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
   const hostJoined = snap.players.some((p) => p.isHost);
   const players = rankPlayers(snap.players);
   const qImage = quiz?.questions?.[snap.qIndex]?.image;
+  // Once a host connects we hide their private QR; this lets them re-show it on demand.
+  const [showHostQr, setShowHostQr] = useState(false);
 
   if (snap.phase === "lobby") {
     const realPlayers = snap.players.filter((p) => !p.isHost);
@@ -323,16 +323,23 @@ function Display({ snap, results, quiz, hostKey, send, onLeave }: { snap: Snap; 
               <div className="bigcode">{snap.code}</div>
               <div className="muted small">or go to {location.host}</div>
             </div>
-            {/* host join (only when a host key exists and no host has joined yet) */}
+            {/* host join. Before a host joins we show the QR. Once joined we collapse it
+                to a compact confirmation, with a link to re-show the QR if needed. */}
             {hostKey && (
               <div className="joincol hostcol">
                 <div className="joinhdr">👑 Host — scan to control</div>
-                {hostJoined
-                  ? <div className="hostjoined">✓ Host connected<div className="muted small mt">Start &amp; step the game from their phone.</div></div>
-                  : <>
-                      <div className="hostqr"><QRCodeSVG value={hostJoinUrl} size={150} /></div>
-                      <div className="muted small">Private code — run the game &amp; play along.</div>
-                    </>}
+                {hostJoined && !showHostQr ? (
+                  <div className="hostjoined">✓ Host connected
+                    <div className="muted small mt">Start &amp; step the game from their phone.</div>
+                    <button className="linkbtn mt" onClick={() => setShowHostQr(true)}>Show host QR</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="hostqr"><QRCodeSVG value={hostJoinUrl} size={150} /></div>
+                    <div className="muted small">Private code — run the game &amp; play along.</div>
+                    {hostJoined && <button className="linkbtn mt" onClick={() => setShowHostQr(false)}>Hide (host already connected)</button>}
+                  </>
+                )}
               </div>
             )}
           </div>

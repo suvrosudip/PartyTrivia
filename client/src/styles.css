@@ -382,3 +382,6 @@ body[data-mode="display"] .joinrow .hostqr svg { width:clamp(110px,20vh,160px) !
 body[data-mode="display"] .lobbycard .chips { max-height:16vh; }
 /* the board-only reveal gets more room now that the question is gone */
 body[data-mode="display"] .lbcard .lblist { max-height:44vh; }
+
+/* host-QR show/hide link sits on its own line under the confirmation */
+.hostjoined .linkbtn.mt, .hostcol .linkbtn.mt { display:inline-block; margin-left:0; }
